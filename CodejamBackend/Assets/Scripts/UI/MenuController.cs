@@ -1,0 +1,1061 @@
+using System;
+using System.Collections.Generic;
+using Alchemy.Inspector;
+using Codejam.Networking;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.UIElements;
+
+/// <summary>
+/// Drives the Console Host Menu & Lobby UI:
+/// - Create Game screen: minimal console card to open a new game room.
+/// - Host Lobby screen: compact center join card displaying the 4-letter Room Code,
+///   while joined players populate the space around the join screen in a clockwise circle
+///   from top-left as merged ColorBody character cubes in the colour they picked (shooting
+///   out small burst cubes on creation, with their name underneath and optional PFP on the cube).
+/// - All UI elements dynamically take the colour picked on the HueBar.
+/// </summary>
+[RequireComponent(typeof(UIDocument))]
+public class MenuController : MonoBehaviour
+{
+    public const int NameMaxLength = 16;
+    public const int RoomCodeLength = 4;
+    public const int MaxPlayers = 12;
+    private const string RoomCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ";
+
+    // Tailwind red-400
+    private static readonly Color ErrorColor = new(0.973f, 0.443f, 0.443f);
+
+    [Serializable]
+    public class LobbyPlayer
+    {
+        public string playerId;
+        public string name;
+        public Color color = Color.cyan;
+        public bool connected = true;
+        public Texture2D avatar;
+        public bool ownsAvatarTexture;
+    }
+
+    [SerializeField, Required] private UIDocument document;
+    [SerializeField] private MenuColorStage colorStage;
+
+    [Title("Lobby Settings")]
+    [Tooltip("When true, clicking Create Game immediately opens the Host Lobby with a generated room code if no network listener calls SetCreating(true) or OpenLobby().")]
+    [SerializeField] private bool autoOpenLobbyOnCreate = true;
+
+    [Tooltip("Minimum number of connected players required before Start Match is allowed (0 allows starting immediately for testing).")]
+    [SerializeField, Min(0)] private int minPlayersToStart = 0;
+
+    [Tooltip("Show the on-screen + ADD PLAYER / - LEAVE simulation buttons inside the lobby card for testing.")]
+    [SerializeField] private bool showSimulateButtons = true;
+
+    [Title("Events")]
+    [SerializeField] private UnityEvent onCreateGameRequested;
+    [SerializeField] private UnityEvent<string> onStartMatchRequested;
+    [SerializeField] private UnityEvent onCloseLobbyRequested;
+
+    [HideInInspector, SerializeField] private UnityEvent<string, string> onJoinRequested;
+
+    public event Action CreateGameRequested;
+    public event Action<string> StartMatchRequested;
+    public event Action CloseLobbyRequested;
+    public event Action<string, string> JoinRequested;
+
+    private VisualElement _root;
+    private VisualElement _column;
+    private VisualElement _characterLabelsLayer;
+    private PixelBlastBackground _background;
+    private HueBar _hueBar;
+
+    // Create Game view elements
+    private VisualElement _createCard;
+    private Label _createError;
+    private Button _createButton;
+
+    // Host Lobby view elements
+    private VisualElement _lobbyCard;
+    private Label _roomCodeDisplay;
+    private Label _lobbyTitle;
+    private Label _lobbyDescription;
+    private Label _playerCountLabel;
+    private Label _lobbyError;
+    private Button _backButton;
+    private Button _startMatchButton;
+    private VisualElement _testRow;
+    private Button _simulateJoinButton;
+    private Button _simulateLeaveButton;
+
+    private readonly List<LobbyPlayer> _players = new();
+    private readonly Dictionary<string, Label> _playerNameLabels = new();
+    private readonly HashSet<Button> _hoveredButtons = new();
+    private readonly HashSet<Button> _focusedButtons = new();
+
+    private Color _hue = Color.white;
+    private bool _creating;
+    private bool _startingMatch;
+    private bool _inLobby;
+    private string _currentRoomCode = "";
+    private int _simulatedColorIndex;
+
+    /// <summary>The colour currently picked on the hue bar (white if none).</summary>
+    public Color SelectedColor => _hue;
+
+    public bool IsCreating => _creating;
+    public bool IsJoining => _creating;
+    public bool IsInLobby => _inLobby;
+    public string CurrentRoomCode => _currentRoomCode;
+    public IReadOnlyList<LobbyPlayer> Players => _players;
+
+    private void Reset()
+    {
+        document = GetComponent<UIDocument>();
+        colorStage = GetComponent<MenuColorStage>() ?? FindAnyObjectByType<MenuColorStage>();
+    }
+
+    private void OnEnable()
+    {
+        if (document == null)
+            document = GetComponent<UIDocument>();
+
+        if (colorStage == null)
+            colorStage = GetComponent<MenuColorStage>() ?? FindAnyObjectByType<MenuColorStage>();
+
+        if (colorStage == null && Application.isPlaying)
+            colorStage = gameObject.AddComponent<MenuColorStage>();
+
+        _root = document.rootVisualElement;
+
+        if (_root == null)
+            return;
+
+        _column = _root.Q<VisualElement>("column");
+        _characterLabelsLayer = _root.Q<VisualElement>("character-labels-layer");
+        _background = _root.Q<PixelBlastBackground>();
+        _hueBar = _root.Q<HueBar>();
+
+        _createCard = _root.Q<VisualElement>("card");
+        _createError = _root.Q<Label>("error");
+        _createButton = _root.Q<Button>("create-game") ?? _root.Q<Button>("join");
+
+        _lobbyCard = _root.Q<VisualElement>("lobby-card");
+        _roomCodeDisplay = _root.Q<Label>("room-code-display");
+        _lobbyTitle = _root.Q<Label>("lobby-title");
+        _lobbyDescription = _root.Q<Label>("lobby-description");
+        _playerCountLabel = _root.Q<Label>("player-count");
+        _lobbyError = _root.Q<Label>("lobby-error");
+        _backButton = _root.Q<Button>("back-button");
+        _startMatchButton = _root.Q<Button>("start-match");
+        _testRow = _root.Q<VisualElement>("lobby-test-row");
+        _simulateJoinButton = _root.Q<Button>("simulate-join");
+        _simulateLeaveButton = _root.Q<Button>("simulate-leave");
+
+        if (_testRow != null)
+            _testRow.style.display = showSimulateButtons ? DisplayStyle.Flex : DisplayStyle.None;
+
+        if (_hueBar != null)
+            _hueBar.ValueChanged += OnHueChanged;
+
+        RegisterButton(_createButton, CreateGame);
+        RegisterButton(_backButton, CloseLobby);
+        RegisterButton(_startMatchButton, StartMatch);
+        RegisterButton(_simulateJoinButton, SimulatePlayerJoin);
+        RegisterButton(_simulateLeaveButton, SimulatePlayerLeave);
+
+        _root.RegisterCallback<KeyDownEvent>(OnRootKeyDown);
+
+        _inLobby = false;
+        _creating = false;
+        _startingMatch = false;
+        _currentRoomCode = "";
+        _hoveredButtons.Clear();
+        _focusedButtons.Clear();
+
+        ClearPlayers();
+        ShowError(null);
+        SetCreating(false);
+        SetView(inLobby: false);
+        RefreshLobbyUI();
+        ApplyHue(_hueBar != null ? _hueBar.Color : Color.white);
+    }
+
+    private void OnDisable()
+    {
+        if (_hueBar != null)
+            _hueBar.ValueChanged -= OnHueChanged;
+
+        UnregisterButton(_createButton, CreateGame);
+        UnregisterButton(_backButton, CloseLobby);
+        UnregisterButton(_startMatchButton, StartMatch);
+        UnregisterButton(_simulateJoinButton, SimulatePlayerJoin);
+        UnregisterButton(_simulateLeaveButton, SimulatePlayerLeave);
+
+        _root?.UnregisterCallback<KeyDownEvent>(OnRootKeyDown);
+
+        _hoveredButtons.Clear();
+        _focusedButtons.Clear();
+    }
+
+    private void OnDestroy()
+    {
+        ReleaseOwnedAvatars();
+    }
+
+    private void LateUpdate()
+    {
+        if (_root == null || _root.panel == null)
+            return;
+
+        SyncCenterCardWorldBoundsToStage();
+        SyncCharacterLabelsToWorldPositions();
+    }
+
+    #region Create Game & Lobby Flow
+
+    /// <summary>Requests room creation (and opens the Host Lobby if autoOpenLobbyOnCreate is enabled).</summary>
+    public void CreateGame()
+    {
+        if (_creating || _inLobby)
+            return;
+
+        ShowError(null);
+        PulseBackgroundRipple(_createButton);
+
+        bool handledExternally = false;
+        SetCreating(true);
+
+        CreateGameRequested?.Invoke();
+        onCreateGameRequested?.Invoke();
+
+        if (_inLobby || !_creating)
+            handledExternally = true;
+
+        if (!handledExternally && autoOpenLobbyOnCreate)
+        {
+            OpenLobby(GenerateRoomCode());
+        }
+    }
+
+    /// <summary>Backwards-compatible alias for CreateGame.</summary>
+    public void Submit() => CreateGame();
+
+    /// <summary>Disables the Create Game button and shows "CREATING ROOM..." while true.</summary>
+    public void SetCreating(bool creating)
+    {
+        _creating = creating;
+
+        if (_createButton != null)
+        {
+            _createButton.SetEnabled(!creating);
+            _createButton.text = creating ? "CREATING ROOM..." : "CREATE GAME";
+            _createButton.style.opacity = creating ? 0.6f : 1f;
+        }
+
+        RefreshAllButtons();
+    }
+
+    public void SetJoining(bool joining) => SetCreating(joining);
+
+    /// <summary>Transitions to the Host Lobby screen for the given 4-letter room code.</summary>
+    public void OpenLobby(string roomCode, IEnumerable<LobbyPlayer> initialPlayers = null)
+    {
+        _creating = false;
+        _startingMatch = false;
+        _currentRoomCode = string.IsNullOrWhiteSpace(roomCode)
+            ? GenerateRoomCode()
+            : roomCode.Trim().ToUpperInvariant();
+
+        SetCreating(false);
+        ShowError(null);
+        SetView(inLobby: true);
+
+        if (initialPlayers != null)
+        {
+            ClearPlayers();
+            foreach (LobbyPlayer player in initialPlayers)
+            {
+                if (player != null && _players.Count < MaxPlayers)
+                {
+                    AddOrUpdatePlayer(
+                        player.playerId,
+                        player.name,
+                        player.color,
+                        player.connected,
+                        player.avatar,
+                        player.ownsAvatarTexture
+                    );
+                }
+            }
+        }
+
+        RefreshLobbyUI();
+        ApplyHue(_hue);
+    }
+
+    /// <summary>Closes the current room lobby, despawns player character cubes, and returns to the Create Game card.</summary>
+    public void CloseLobby()
+    {
+        if (!_inLobby)
+            return;
+
+        PulseBackgroundRipple(_backButton);
+
+        _inLobby = false;
+        _startingMatch = false;
+        _currentRoomCode = "";
+        ClearPlayers();
+        ShowError(null);
+
+        SetView(inLobby: false);
+        ApplyHue(_hue);
+
+        CloseLobbyRequested?.Invoke();
+        onCloseLobbyRequested?.Invoke();
+    }
+
+    /// <summary>Validates player count and triggers StartMatchRequested for the active room.</summary>
+    public void StartMatch()
+    {
+        if (!_inLobby || _startingMatch)
+            return;
+
+        int connectedCount = GetConnectedPlayerCount();
+        if (connectedCount < minPlayersToStart)
+        {
+            string plural = minPlayersToStart == 1 ? "player" : "players";
+            ShowError($"Need at least {minPlayersToStart} {plural} to start the match.");
+            return;
+        }
+
+        ShowError(null);
+        PulseBackgroundRipple(_startMatchButton);
+
+        StartMatchRequested?.Invoke(_currentRoomCode);
+        onStartMatchRequested?.Invoke(_currentRoomCode);
+        JoinRequested?.Invoke("HOST", _currentRoomCode);
+        onJoinRequested?.Invoke("HOST", _currentRoomCode);
+    }
+
+    private void SetView(bool inLobby)
+    {
+        _inLobby = inLobby;
+
+        _column?.EnableInClassList("menu-column--lobby", inLobby);
+        _createCard?.EnableInClassList("is-hidden", inLobby);
+        _lobbyCard?.EnableInClassList("is-hidden", !inLobby);
+    }
+
+    #endregion
+
+    #region Players & Character Cubes
+
+    /// <summary>
+    /// Adds a new player (merging the two closest greyscale cubes at the next clockwise seat
+    /// around the join screen into their coloured character cube) or updates an existing player.
+    /// </summary>
+    public void AddOrUpdatePlayer(
+        string playerId,
+        string playerName,
+        Color? pickedColor = null,
+        bool connected = true,
+        Texture2D avatar = null,
+        bool ownsAvatarTexture = false)
+    {
+        if (string.IsNullOrWhiteSpace(playerId))
+            playerId = Guid.NewGuid().ToString("N");
+
+        string cleanName = string.IsNullOrWhiteSpace(playerName)
+            ? "PLAYER"
+            : playerName.Trim();
+
+        if (cleanName.Length > NameMaxLength)
+            cleanName = cleanName.Substring(0, NameMaxLength);
+
+        Color chosenColor;
+
+        int existingIndex = _players.FindIndex(p => p.playerId == playerId);
+        if (existingIndex >= 0)
+        {
+            LobbyPlayer existing = _players[existingIndex];
+            existing.name = cleanName;
+            existing.connected = connected;
+            if (pickedColor.HasValue)
+                existing.color = pickedColor.Value;
+
+            chosenColor = existing.color;
+
+            if (avatar != null)
+            {
+                if (existing.ownsAvatarTexture && existing.avatar != null && existing.avatar != avatar)
+                    Destroy(existing.avatar);
+
+                existing.avatar = avatar;
+                existing.ownsAvatarTexture = ownsAvatarTexture;
+            }
+        }
+        else
+        {
+            if (_players.Count >= MaxPlayers)
+                return;
+
+            chosenColor = pickedColor ?? NextDistinctPlayerColor();
+
+            _players.Add(new LobbyPlayer
+            {
+                playerId = playerId,
+                name = cleanName,
+                color = chosenColor,
+                connected = connected,
+                avatar = avatar,
+                ownsAvatarTexture = ownsAvatarTexture
+            });
+        }
+
+        if (colorStage != null)
+            colorStage.AddOrUpdatePlayerCharacter(playerId, cleanName, chosenColor, connected, avatar);
+
+        EnsureCharacterNameLabel(playerId, cleanName, chosenColor, connected);
+
+        ShowError(null);
+        RefreshLobbyUI();
+        ApplyHue(_hue);
+    }
+
+    /// <summary>Updates a player's picked colour on their character cube and name tag.</summary>
+    public void SetPlayerColor(string playerId, Color pickedColor)
+    {
+        int index = _players.FindIndex(p => p.playerId == playerId);
+        if (index < 0)
+            return;
+
+        LobbyPlayer player = _players[index];
+        player.color = pickedColor;
+
+        if (colorStage != null)
+            colorStage.AddOrUpdatePlayerCharacter(playerId, player.name, pickedColor, player.connected, player.avatar);
+
+        EnsureCharacterNameLabel(playerId, player.name, pickedColor, player.connected);
+    }
+
+    /// <summary>
+    /// Decodes a GZIP+Base64 white-on-black PFP drawing (d.t == "pfp_submit") and displays it
+    /// on the player's character cube.
+    /// </summary>
+    public void SetPlayerAvatar(string playerId, string base64GzipImage)
+    {
+        int index = _players.FindIndex(p => p.playerId == playerId);
+        if (index < 0)
+            return;
+
+        Texture2D tex = DrawingImageCodec.DecompressToTexture2D(base64GzipImage);
+        if (tex == null)
+            return;
+
+        LobbyPlayer player = _players[index];
+        if (player.ownsAvatarTexture && player.avatar != null)
+            Destroy(player.avatar);
+
+        player.avatar = tex;
+        player.ownsAvatarTexture = true;
+
+        if (colorStage != null)
+            colorStage.SetPlayerCharacterAvatar(playerId, tex);
+    }
+
+    /// <summary>Updates a player's connection state.</summary>
+    public void SetPlayerConnected(string playerId, bool connected)
+    {
+        int index = _players.FindIndex(p => p.playerId == playerId);
+        if (index < 0)
+            return;
+
+        LobbyPlayer player = _players[index];
+        player.connected = connected;
+
+        if (colorStage != null)
+            colorStage.SetPlayerCharacterConnected(playerId, connected);
+
+        EnsureCharacterNameLabel(playerId, player.name, player.color, connected);
+        RefreshLobbyUI();
+        ApplyHue(_hue);
+    }
+
+    /// <summary>
+    /// Removes a player from the lobby, despawning their character cube and spawning
+    /// replacement greyscale cubes.
+    /// </summary>
+    public void RemovePlayer(string playerId)
+    {
+        int index = _players.FindIndex(p => p.playerId == playerId);
+        if (index < 0)
+            return;
+
+        LobbyPlayer player = _players[index];
+        if (player.ownsAvatarTexture && player.avatar != null)
+            Destroy(player.avatar);
+
+        _players.RemoveAt(index);
+
+        if (colorStage != null)
+            colorStage.RemovePlayerCharacter(playerId);
+
+        RemoveCharacterNameLabel(playerId);
+        RefreshLobbyUI();
+        ApplyHue(_hue);
+    }
+
+    /// <summary>Clears all players from the lobby and despawns their character cubes.</summary>
+    public void ClearPlayers()
+    {
+        ReleaseOwnedAvatars();
+        _players.Clear();
+
+        if (colorStage != null)
+            colorStage.ClearAllPlayerCharacters();
+
+        foreach (Label label in _playerNameLabels.Values)
+            label?.RemoveFromHierarchy();
+
+        _playerNameLabels.Clear();
+
+        RefreshLobbyUI();
+        ApplyHue(_hue);
+    }
+
+    private Color NextDistinctPlayerColor()
+    {
+        // Golden-ratio hue step produces vivid, maximally distinct colours for every joining player
+        float hue = Mathf.Repeat(_simulatedColorIndex * 0.61803398875f + UnityEngine.Random.Range(0f, 0.08f), 1f);
+        _simulatedColorIndex++;
+        return Color.HSVToRGB(hue, 0.88f, 0.98f);
+    }
+
+    private void EnsureCharacterNameLabel(string playerId, string playerName, Color playerColor, bool connected)
+    {
+        if (_characterLabelsLayer == null)
+            return;
+
+        if (!_playerNameLabels.TryGetValue(playerId, out Label label) || label == null)
+        {
+            label = new Label
+            {
+                pickingMode = PickingMode.Ignore
+            };
+            label.AddToClassList("character-name-label");
+            _characterLabelsLayer.Add(label);
+            _playerNameLabels[playerId] = label;
+        }
+
+        label.text = playerName.ToUpperInvariant();
+        label.style.color = playerColor;
+        SetBorderColor(label, new Color(playerColor.r, playerColor.g, playerColor.b, 0.7f));
+        label.style.opacity = connected ? 1f : 0.6f;
+    }
+
+    private void RemoveCharacterNameLabel(string playerId)
+    {
+        if (_playerNameLabels.TryGetValue(playerId, out Label label))
+        {
+            label?.RemoveFromHierarchy();
+            _playerNameLabels.Remove(playerId);
+        }
+    }
+
+    private void SyncCenterCardWorldBoundsToStage()
+    {
+        if (colorStage == null || _column == null)
+            return;
+
+        Camera cam = colorStage.StageCamera;
+        if (cam == null || !cam.orthographic)
+            return;
+
+        Rect panelRect = _root.worldBound;
+        Rect colRect = _column.worldBound;
+
+        if (panelRect.width < 1f || panelRect.height < 1f || colRect.width < 1f || colRect.height < 1f)
+            return;
+
+        float worldH = cam.orthographicSize * 2f;
+        float worldW = worldH * cam.aspect;
+
+        float normCenterX = (colRect.center.x - panelRect.xMin) / panelRect.width - 0.5f;
+        float normCenterY = 0.5f - (colRect.center.y - panelRect.yMin) / panelRect.height;
+
+        Vector2 worldCenter = new(
+            cam.transform.position.x + normCenterX * worldW,
+            cam.transform.position.y + normCenterY * worldH
+        );
+
+        Vector2 worldHalfExtents = new(
+            (colRect.width / panelRect.width) * worldW * 0.5f,
+            (colRect.height / panelRect.height) * worldH * 0.5f
+        );
+
+        colorStage.SetCenterCardWorldBounds(worldCenter, worldHalfExtents);
+    }
+
+    private void SyncCharacterLabelsToWorldPositions()
+    {
+        if (colorStage == null || _characterLabelsLayer == null || _root.panel == null)
+            return;
+
+        Camera cam = colorStage.StageCamera;
+        if (cam == null)
+            return;
+
+        for (int i = 0; i < _players.Count; i++)
+        {
+            LobbyPlayer player = _players[i];
+            if (!_playerNameLabels.TryGetValue(player.playerId, out Label label) || label == null)
+                continue;
+
+            if (!colorStage.TryGetPlayerCharacterAnchor(player.playerId, out Vector3 worldCenter, out float radius))
+            {
+                label.style.display = DisplayStyle.None;
+                continue;
+            }
+
+            label.style.display = DisplayStyle.Flex;
+
+            Vector3 anchorWorld = worldCenter - new Vector3(0f, radius + 0.34f, 0f);
+            Vector2 panelPos = RuntimePanelUtils.CameraTransformWorldToPanel(_root.panel, anchorWorld, cam);
+
+            label.style.left = panelPos.x;
+            label.style.top = panelPos.y;
+        }
+    }
+
+    private void ReleaseOwnedAvatars()
+    {
+        for (int i = 0; i < _players.Count; i++)
+        {
+            if (_players[i].ownsAvatarTexture && _players[i].avatar != null)
+                Destroy(_players[i].avatar);
+        }
+    }
+
+    private int GetConnectedPlayerCount()
+    {
+        int count = 0;
+        for (int i = 0; i < _players.Count; i++)
+        {
+            if (_players[i].connected)
+                count++;
+        }
+        return count;
+    }
+
+    private void RefreshLobbyUI()
+    {
+        if (_roomCodeDisplay != null)
+            _roomCodeDisplay.text = string.IsNullOrEmpty(_currentRoomCode) ? "----" : _currentRoomCode;
+
+        int totalJoined = _players.Count;
+        int connectedCount = GetConnectedPlayerCount();
+
+        if (_playerCountLabel != null)
+            _playerCountLabel.text = $"{totalJoined} / {MaxPlayers}";
+
+        if (_lobbyTitle != null)
+        {
+            _lobbyTitle.text = totalJoined == 0
+                ? "WAITING FOR PLAYERS..."
+                : totalJoined >= MaxPlayers
+                    ? "ROOM FULL — READY"
+                    : "PLAYERS JOINED";
+        }
+
+        if (_lobbyDescription != null)
+        {
+            _lobbyDescription.text = totalJoined == 0
+                ? "Enter the 4-letter code on your device to join"
+                : "Press START MATCH when everyone is ready";
+        }
+
+        if (_startMatchButton != null)
+        {
+            bool canStart = !_startingMatch && connectedCount >= minPlayersToStart;
+            _startMatchButton.SetEnabled(canStart);
+            _startMatchButton.style.opacity = canStart ? 1f : 0.5f;
+        }
+
+        if (_simulateJoinButton != null)
+        {
+            bool canAdd = totalJoined < MaxPlayers;
+            _simulateJoinButton.SetEnabled(canAdd);
+            _simulateJoinButton.style.opacity = canAdd ? 1f : 0.45f;
+        }
+
+        if (_simulateLeaveButton != null)
+        {
+            bool canRemove = totalJoined > 0;
+            _simulateLeaveButton.SetEnabled(canRemove);
+            _simulateLeaveButton.style.opacity = canRemove ? 1f : 0.45f;
+        }
+    }
+
+    #endregion
+
+    #region Error & Helpers
+
+    /// <summary>Shows an error on the currently active card (null or empty hides it).</summary>
+    public void ShowError(string message)
+    {
+        bool show = !string.IsNullOrEmpty(message);
+
+        if (_createError != null)
+        {
+            _createError.text = show && !_inLobby ? message : "";
+            _createError.style.display = show && !_inLobby ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        if (_lobbyError != null)
+        {
+            _lobbyError.text = show && _inLobby ? message : "";
+            _lobbyError.style.display = show && _inLobby ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+    }
+
+    /// <summary>Generates a random 4-letter room code using the relay protocol alphabet.</summary>
+    public static string GenerateRoomCode()
+    {
+        char[] chars = new char[RoomCodeLength];
+        for (int i = 0; i < RoomCodeLength; i++)
+        {
+            chars[i] = RoomCodeAlphabet[UnityEngine.Random.Range(0, RoomCodeAlphabet.Length)];
+        }
+        return new string(chars);
+    }
+
+    #endregion
+
+    #region Buttons & Console Input
+
+    private void RegisterButton(Button button, Action onClick)
+    {
+        if (button == null)
+            return;
+
+        button.clicked += onClick;
+        button.RegisterCallback<PointerEnterEvent, Button>(OnButtonPointerEnter, button);
+        button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonPointerLeave, button);
+        button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
+        button.RegisterCallback<FocusOutEvent, Button>(OnButtonFocusOut, button);
+    }
+
+    private void UnregisterButton(Button button, Action onClick)
+    {
+        if (button == null)
+            return;
+
+        button.clicked -= onClick;
+        button.UnregisterCallback<PointerEnterEvent, Button>(OnButtonPointerEnter);
+        button.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonPointerLeave);
+        button.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
+        button.UnregisterCallback<FocusOutEvent, Button>(OnButtonFocusOut);
+    }
+
+    private void OnButtonPointerEnter(PointerEnterEvent evt, Button button)
+    {
+        _hoveredButtons.Add(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonPointerLeave(PointerLeaveEvent evt, Button button)
+    {
+        _hoveredButtons.Remove(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonFocusIn(FocusInEvent evt, Button button)
+    {
+        _focusedButtons.Add(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonFocusOut(FocusOutEvent evt, Button button)
+    {
+        _focusedButtons.Remove(button);
+        RefreshButton(button);
+    }
+
+    private void OnRootKeyDown(KeyDownEvent evt)
+    {
+        if (_hueBar != null && _hueBar.IsOpen)
+            return;
+
+        if (evt.keyCode is KeyCode.Return or KeyCode.KeypadEnter)
+        {
+            if (!_inLobby)
+            {
+                CreateGame();
+                evt.StopPropagation();
+            }
+            else
+            {
+                StartMatch();
+                evt.StopPropagation();
+            }
+        }
+        else if (evt.keyCode == KeyCode.Escape && _inLobby)
+        {
+            CloseLobby();
+            evt.StopPropagation();
+        }
+    }
+
+    private void PulseBackgroundRipple(VisualElement target)
+    {
+        if (_background == null || target == null)
+            return;
+
+        Vector2 worldCenter = target.worldBound.center;
+        Vector2 localPos = _background.WorldToLocal(worldCenter);
+        _background.AddRipple(localPos);
+    }
+
+    #endregion
+
+    #region Hue Colouring
+
+    private void OnHueChanged(float? value) =>
+        ApplyHue(value.HasValue ? HueBar.ColorAt(value.Value) : Color.white);
+
+    /// <summary>
+    /// Colours the entire console UI with the picked hue (matching the frontend's --hue var).
+    /// Done inline since USS variables can't be mutated at runtime.
+    /// </summary>
+    private void ApplyHue(Color hue)
+    {
+        _hue = hue;
+
+        if (_root == null)
+            return;
+
+        Color dimHue = new(hue.r, hue.g, hue.b, 0.78f);
+        Color faintHue = new(hue.r, hue.g, hue.b, 0.35f);
+        Color dimBorder = new(hue.r, hue.g, hue.b, 0.45f);
+        Color dimBg = new(hue.r, hue.g, hue.b, 0.22f);
+
+        _root.Query(className: "hue-text").ForEach(e => e.style.color = hue);
+        _root.Query(className: "hue-dim-text").ForEach(e => e.style.color = dimHue);
+        _root.Query(className: "hue-faint-text").ForEach(e => e.style.color = faintHue);
+        _root.Query(className: "hue-border").ForEach(e => SetBorderColor(e, hue));
+        _root.Query(className: "hue-dim-border").ForEach(e => SetBorderColor(e, dimBorder));
+        _root.Query(className: "hue-dim-bg").ForEach(e => e.style.backgroundColor = dimBg);
+
+        if (_background != null)
+            _background.accentColor = hue;
+
+        if (_createError != null)
+            _createError.style.color = ErrorColor;
+
+        if (_lobbyError != null)
+            _lobbyError.style.color = ErrorColor;
+
+        RefreshAllButtons();
+    }
+
+    private void RefreshAllButtons()
+    {
+        RefreshButton(_createButton);
+        RefreshButton(_backButton);
+        RefreshButton(_startMatchButton);
+        RefreshButton(_simulateJoinButton);
+        RefreshButton(_simulateLeaveButton);
+    }
+
+    private void RefreshButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        bool active = (_hoveredButtons.Contains(button) || _focusedButtons.Contains(button)) &&
+                      button.enabledSelf;
+
+        SetBorderColor(button, _hue);
+        button.style.backgroundColor = active ? _hue : new Color(0f, 0f, 0f, 0.45f);
+        button.style.color = active ? Color.black : _hue;
+    }
+
+    private static void SetBorderColor(VisualElement element, Color color)
+    {
+        element.style.borderTopColor = color;
+        element.style.borderRightColor = color;
+        element.style.borderBottomColor = color;
+        element.style.borderLeftColor = color;
+    }
+
+    #endregion
+
+    #region Simulation / Testing Actions
+
+    private static readonly string[] SampleNames =
+    {
+        "PRISM", "CHROMA", "SPECTRA", "NEON", "PIXEL", "COBALT",
+        "VERMILION", "CYAN", "MAGENTA", "AMBER", "INDIGO", "IRIS"
+    };
+
+    [Title("Debug / Preview (Play Mode)")]
+    [Button]
+    public void SimulateOpenLobby()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("MenuController preview buttons work in Play Mode.");
+            return;
+        }
+
+        OpenLobby(GenerateRoomCode());
+    }
+
+    [Button]
+    public void SimulatePlayerJoin()
+    {
+        SimulateJoinInternal(withPfp: UnityEngine.Random.value < 0.65f);
+    }
+
+    [Button]
+    public void SimulatePlayerJoinWithPfp()
+    {
+        SimulateJoinInternal(withPfp: true);
+    }
+
+    [Button]
+    public void SimulatePlayerJoinNoPfp()
+    {
+        SimulateJoinInternal(withPfp: false);
+    }
+
+    [Button]
+    public void SimulatePlayerLeave()
+    {
+        if (!Application.isPlaying || _players.Count == 0)
+            return;
+
+        RemovePlayer(_players[_players.Count - 1].playerId);
+    }
+
+    [Button]
+    public void SimulateBackToCreate()
+    {
+        if (!Application.isPlaying)
+            return;
+
+        CloseLobby();
+    }
+
+    private void SimulateJoinInternal(bool withPfp)
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("MenuController preview buttons work in Play Mode.");
+            return;
+        }
+
+        if (!_inLobby)
+            OpenLobby(GenerateRoomCode());
+
+        int index = _players.Count;
+        if (index >= MaxPlayers)
+            return;
+
+        string sampleName = SampleNames[(_simulatedColorIndex) % SampleNames.Length];
+        Color pickedColor = NextDistinctPlayerColor();
+        Texture2D pfp = withPfp ? GenerateSampleDoodlePfp(index) : null;
+
+        AddOrUpdatePlayer(
+            $"p_sim_{Guid.NewGuid():N}",
+            sampleName,
+            pickedColor: pickedColor,
+            connected: true,
+            avatar: pfp,
+            ownsAvatarTexture: pfp != null
+        );
+    }
+
+    /// <summary>
+    /// Generates a crisp 64x64 white-on-black pixel doodle PFP matching the frontend's LobbyPfpCanvas format.
+    /// </summary>
+    private static Texture2D GenerateSampleDoodlePfp(int patternIndex)
+    {
+        const int size = 64;
+        Texture2D tex = new(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        Color32 bg = new(0, 0, 0, 255);
+        Color32 ink = new(255, 255, 255, 255);
+        Color32[] pixels = new Color32[size * size];
+
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = bg;
+
+        void PlotSquare(int cx, int cy, int r)
+        {
+            for (int dy = -r; dy <= r; dy++)
+            {
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    int x = cx + dx;
+                    int y = cy + dy;
+                    if (x >= 0 && x < size && y >= 0 && y < size)
+                        pixels[y * size + x] = ink;
+                }
+            }
+        }
+
+        int variant = patternIndex % 4;
+        switch (variant)
+        {
+            case 0: // Smiley face
+                PlotSquare(21, 41, 3);
+                PlotSquare(43, 41, 3);
+                for (int x = 18; x <= 46; x++)
+                {
+                    float t = (x - 32f) / 14f;
+                    int y = 20 + Mathf.RoundToInt(t * t * 7f);
+                    PlotSquare(x, y, 2);
+                }
+                break;
+
+            case 1: // Cool visor / robot face
+                for (int x = 14; x <= 50; x++)
+                    PlotSquare(x, 40, 3);
+                for (int x = 22; x <= 42; x += 4)
+                    PlotSquare(x, 20, 2);
+                break;
+
+            case 2: // Cat face
+                for (int i = 0; i < 12; i++)
+                {
+                    PlotSquare(14 + i, 44 + (11 - Mathf.Abs(i - 5)), 1);
+                    PlotSquare(38 + i, 44 + (11 - Mathf.Abs(i - 5)), 1);
+                }
+                PlotSquare(22, 34, 3);
+                PlotSquare(42, 34, 3);
+                PlotSquare(32, 26, 2);
+                break;
+
+            default: // Star / crown
+                for (int x = 14; x <= 50; x++)
+                    PlotSquare(x, 18, 2);
+                for (int y = 18; y <= 44; y++)
+                {
+                    PlotSquare(14, y, 2);
+                    PlotSquare(50, y, 2);
+                    PlotSquare(32, y, 2);
+                }
+                break;
+        }
+
+        tex.SetPixels32(pixels);
+        tex.Apply(false, false);
+        return tex;
+    }
+
+    #endregion
+}

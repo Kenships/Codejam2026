@@ -152,20 +152,69 @@ export function LobbyPfpCanvas({ inkColor }: LobbyPfpCanvasProps) {
     redrawCanvas()
   }
 
+  const persistStrokes = useCallback(
+    async (strokesSnapshot: DrawingStroke[], sendToRelay: boolean) => {
+      if (strokesSnapshot.length === 0) {
+        setPfp(null)
+        setSaved(false)
+        return
+      }
+      setSaving(true)
+      try {
+        const canvas = canvasRef.current
+        const exported = await compressWhiteDrawingImage({
+          cssWidth: canvas?.clientWidth || PFP_MAX_PX,
+          cssHeight: canvas?.clientHeight || PFP_MAX_PX,
+          strokes: strokesSnapshot,
+        })
+
+        setPfp({
+          dataUrl: exported.dataUrl,
+          strokes: strokesSnapshot,
+          compressed: {
+            base64: exported.base64,
+            mime: exported.mime,
+            width: exported.width,
+            height: exported.height,
+          },
+        })
+        if (sendToRelay) {
+          relayClient.send('host', {
+            t: 'pfp_submit',
+            image: exported.base64,
+            mime: exported.mime,
+            compression: exported.compression,
+            w: exported.width,
+            h: exported.height,
+          })
+          setSaved(true)
+        }
+      } finally {
+        setSaving(false)
+      }
+    },
+    [setPfp]
+  )
+
   const finishStroke = () => {
     if (!activeStrokeRef.current) return
-    strokesRef.current = [...strokesRef.current, activeStrokeRef.current]
+    const nextStrokes = [...strokesRef.current, activeStrokeRef.current]
+    strokesRef.current = nextStrokes
     activeStrokeRef.current = null
-    setStrokesCount(strokesRef.current.length)
+    setStrokesCount(nextStrokes.length)
     redrawCanvas()
+    // Auto-save locally so joining from LoginCard includes the avatar even without pressing Save PFP
+    void persistStrokes(nextStrokes, false)
   }
 
   const handleUndo = () => {
     if (strokesRef.current.length === 0) return
-    strokesRef.current = strokesRef.current.slice(0, -1)
-    setStrokesCount(strokesRef.current.length)
+    const nextStrokes = strokesRef.current.slice(0, -1)
+    strokesRef.current = nextStrokes
+    setStrokesCount(nextStrokes.length)
     setSaved(false)
     redrawCanvas()
+    void persistStrokes(nextStrokes, false)
   }
 
   const handleClear = () => {
@@ -180,38 +229,7 @@ export function LobbyPfpCanvas({ inkColor }: LobbyPfpCanvasProps) {
 
   const handleSavePfp = async () => {
     if (saving || strokesRef.current.length === 0) return
-    setSaving(true)
-    try {
-      const canvas = canvasRef.current
-      const strokesSnapshot = [...strokesRef.current]
-      const exported = await compressWhiteDrawingImage({
-        cssWidth: canvas?.clientWidth || PFP_MAX_PX,
-        cssHeight: canvas?.clientHeight || PFP_MAX_PX,
-        strokes: strokesSnapshot,
-      })
-
-      setPfp({
-        dataUrl: exported.dataUrl,
-        strokes: strokesSnapshot,
-        compressed: {
-          base64: exported.base64,
-          mime: exported.mime,
-          width: exported.width,
-          height: exported.height,
-        },
-      })
-      relayClient.send('host', {
-        t: 'pfp_submit',
-        image: exported.base64,
-        mime: exported.mime,
-        compression: exported.compression,
-        w: exported.width,
-        h: exported.height,
-      })
-      setSaved(true)
-    } finally {
-      setSaving(false)
-    }
+    await persistStrokes([...strokesRef.current], true)
   }
 
   return (
@@ -220,7 +238,7 @@ export function LobbyPfpCanvas({ inkColor }: LobbyPfpCanvasProps) {
         Draw Your Avatar
       </span>
 
-      <div className="relative h-40 w-40 sm:h-44 sm:w-44 overflow-hidden border-2 border-(--hue) bg-black">
+      <div className="relative h-32 w-32 sm:h-36 sm:w-36 overflow-hidden border-2 border-(--hue) bg-black">
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}

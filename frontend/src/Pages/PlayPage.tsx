@@ -10,6 +10,7 @@ import {
 } from '@/components/PlayingBoardCard'
 import { RoundResultsCard } from '@/components/RoundResultsCard'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
+import { TrueHueTitle } from '@/components/TrueHueTitle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createMockCompressedDrawing } from '@/lib/drawingCodec'
@@ -18,9 +19,24 @@ import { DEV_MOCK_MODE, relayClient, RelayJoinError } from '@/lib/relayClient'
 import type { PlayerRoundResult } from '@/lib/results'
 import { useLoginStore, type ConnectionStatus } from '@/store/useLoginStore'
 
-export type GamePhase = 'waiting' | 'playing' | 'drawing' | 'results' | 'finished'
+export type GamePhase =
+  | 'waiting'
+  | 'drawing'
+  | 'drawing_done'
+  | 'playing'
+  | 'playing_done'
+  | 'results'
+  | 'finished'
 
-const DEV_GAME_PHASES: GamePhase[] = ['waiting', 'playing', 'drawing', 'results', 'finished']
+const DEV_GAME_PHASES: GamePhase[] = [
+  'waiting',
+  'drawing',
+  'drawing_done',
+  'playing',
+  'playing_done',
+  'results',
+  'finished',
+]
 const DEV_CONNECTION_STATUSES: ConnectionStatus[] = [
   'joined',
   'connecting',
@@ -162,6 +178,7 @@ export function PlayPage() {
           prompt: typeof d.prompt === 'string' ? d.prompt : '',
           artistName: typeof d.artistName === 'string' ? d.artistName : undefined,
         })
+        setGamePhase('playing')
       } else if (d.t === 'results') {
         // When results are revealed on the host screen, update roundResult and jump to results phase
         if (typeof d.targetHex === 'string' || typeof d.hex === 'string') {
@@ -214,9 +231,14 @@ export function PlayPage() {
   // Any status other than 'joined' always falls back to the waiting/loading screen
   const activePhase: GamePhase = status !== 'joined' ? 'waiting' : gamePhase
 
-  // Slowly cycle the hue around the rainbow on the waiting and finished screens
+  // Slowly cycle the hue around the rainbow on the waiting, drawing_done, and finished screens
   useEffect(() => {
-    if (activePhase !== 'waiting' && activePhase !== 'finished') return
+    if (
+      activePhase !== 'waiting' &&
+      activePhase !== 'drawing_done' &&
+      activePhase !== 'finished'
+    )
+      return
 
     let frameId = 0
     let lastTime = performance.now()
@@ -236,7 +258,9 @@ export function PlayPage() {
   const waitingColor = hueToHex(waitingHue)
   const pickedColor = guessHue === null ? '#ffffff' : hueToHex(guessHue)
   const uiColor =
-    activePhase === 'waiting' || activePhase === 'finished'
+    activePhase === 'waiting' ||
+    activePhase === 'drawing_done' ||
+    activePhase === 'finished'
       ? waitingColor
       : activePhase === 'results' && roundResult
         ? roundResult.targetHex
@@ -334,12 +358,14 @@ export function PlayPage() {
         )
 
       case 'playing':
+      case 'playing_done':
         return (
           <PlayingBoardCard
             hue={guessHue}
             onHueChange={setGuessHue}
             onResetHue={() => setGuessHue(null)}
             drawing={incomingDrawing}
+            forceSubmitted={activePhase === 'playing_done'}
           />
         )
 
@@ -349,15 +375,48 @@ export function PlayPage() {
             targetHex={drawingTargetHex}
             durationSec={60}
             onSubmit={(sub) => {
-              // Also feed the compressed drawing into local state so you can preview it in `playing`
+              // Feed the compressed drawing into local state and transition to the spinning waiting state
               setIncomingDrawing({
                 imageBase64: sub.imageBase64,
                 mime: sub.mime,
                 prompt: sub.prompt,
                 artistName: username || 'You',
               })
+              setGamePhase('drawing_done')
             }}
           />
+        )
+
+      case 'drawing_done':
+        return (
+          <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
+              <div className="flex flex-col gap-2 p-2">
+                <CardHeader>
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+                    Drawing Submitted!
+                  </CardTitle>
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                    Waiting for other players to finish drawing...
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                    {room && (
+                      <p className="text-base sm:text-lg tracking-wider uppercase">
+                        Room: <span className="font-semibold">{room}</span>
+                      </p>
+                    )}
+                    {username && (
+                      <p className="text-base text-(--hue)/80">
+                        Joined as {username}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </div>
+            </Card>
+          </SquareHueSlider>
         )
 
       case 'results':
@@ -434,15 +493,19 @@ export function PlayPage() {
 
       <div className="relative flex flex-col items-center gap-4 w-full max-w-100">
         <div className="flex flex-col items-center select-none">
-          <h1
-            className={`w-max pl-[0.05em] font-jersey font-semibold tracking-wider uppercase text-center text-(--hue) [text-shadow:0_0_10px_#000,0_0_20px_#000,0_0_32px_#000] ${
-              activePhase === 'drawing' || activePhase === 'playing'
-                ? 'text-4xl sm:text-5xl'
-                : 'text-6xl sm:text-8xl'
-            }`}
-          >
-            HueSlider
-          </h1>
+          <TrueHueTitle
+            overlapAnimate={
+              activePhase === 'waiting' ||
+              activePhase === 'drawing_done' ||
+              activePhase === 'finished'
+            }
+            hueAngle={waitingHue}
+            compact={
+              activePhase === 'drawing' ||
+              activePhase === 'playing' ||
+              activePhase === 'playing_done'
+            }
+          />
         </div>
 
         <div className="w-full">{renderPhaseContent()}</div>

@@ -26,6 +26,8 @@ interface PlayingBoardCardProps {
   onHueChange: (hue: number) => void
   onResetHue: () => void
   drawing: IncomingRoundDrawing | null
+  /** Force submitted/waiting state for dev preview */
+  forceSubmitted?: boolean
   onGuessSubmitted?: (guessedHex: string) => void
 }
 
@@ -34,6 +36,7 @@ export function PlayingBoardCard({
   onHueChange,
   onResetHue,
   drawing,
+  forceSubmitted = false,
   onGuessSubmitted,
 }: PlayingBoardCardProps) {
   const [decompressedState, setDecompressedState] = useState<{
@@ -57,7 +60,7 @@ export function PlayingBoardCard({
     Boolean(imageBase64) && decompressedState?.sourceBase64 !== imageBase64
   const submittedHex =
     submittedGuess?.sourceBase64 === imageBase64 ? submittedGuess.hex : null
-  const isSubmitted = submittedHex !== null
+  const isSubmitted = submittedHex !== null || forceSubmitted
   const displayColor = submittedHex ?? pickedColor
 
   // Decompress incoming GZIP+Base64 image whenever a new round drawing arrives

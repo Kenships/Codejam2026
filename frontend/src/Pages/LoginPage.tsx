@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react'
 
 import PixelBlast from '../components/PixelBlast'
 import { LoginCard } from '../components/LoginCard'
+import { TrueHueTitle } from '@/components/TrueHueTitle'
 import { HueBar, colorAt } from '@/components/HueBar'
 
 export function LoginPage() {
@@ -30,14 +31,14 @@ export function LoginPage() {
                 />
             </div>
             <div className="relative flex flex-col gap-2 w-full max-w-100">
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-3">
                     <div className="flex flex-col items-center select-none">
-                        <h1 className="w-max pl-[0.05em] font-jersey text-6xl sm:text-8xl font-semibold tracking-wider uppercase text-center text-(--hue) [text-shadow:0_0_10px_#000,0_0_20px_#000,0_0_32px_#000]">HueSlider</h1>
-                        <p className=" font-jersey text-2xl text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000,0_0_24px_#000]">Find the hue that matches the room</p>
+                        <TrueHueTitle />
+                        <p className="font-jersey text-xl sm:text-2xl text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000,0_0_24px_#000]">Find the hue that matches the room</p>
                     </div>
                     <HueBar value={pos} onChange={setPos}  />
 
-                    <LoginCard />
+                    <LoginCard inkColor={color} />
                 </div>
 
             </div>
