@@ -20,7 +20,6 @@ import { useLoginStore, type ConnectionStatus } from '@/store/useLoginStore'
 
 export type GamePhase =
   | 'waiting'
-  | 'waiting_for_drawing'
   | 'drawing'
   | 'drawing_done'
   | 'playing'
@@ -30,7 +29,6 @@ export type GamePhase =
 
 const DEV_GAME_PHASES: GamePhase[] = [
   'waiting',
-  'waiting_for_drawing',
   'drawing',
   'drawing_done',
   'playing',
@@ -216,7 +214,6 @@ export function PlayPage() {
       } else if (
         d.t === 'state' &&
         (d.phase === 'waiting' ||
-          d.phase === 'waiting_for_drawing' ||
           d.phase === 'playing' ||
           d.phase === 'drawing' ||
           d.phase === 'results' ||
@@ -233,11 +230,11 @@ export function PlayPage() {
   // Any status other than 'joined' always falls back to the waiting/loading screen
   const activePhase: GamePhase = status !== 'joined' ? 'waiting' : gamePhase
 
-  // Slowly cycle the hue around the rainbow on the waiting, waiting_for_drawing, and finished screens
+  // Slowly cycle the hue around the rainbow on the waiting, drawing_done, and finished screens
   useEffect(() => {
     if (
       activePhase !== 'waiting' &&
-      activePhase !== 'waiting_for_drawing' &&
+      activePhase !== 'drawing_done' &&
       activePhase !== 'finished'
     )
       return
@@ -261,12 +258,12 @@ export function PlayPage() {
   const pickedColor = guessHue === null ? '#ffffff' : hueToHex(guessHue)
   const uiColor =
     activePhase === 'waiting' ||
-    activePhase === 'waiting_for_drawing' ||
+    activePhase === 'drawing_done' ||
     activePhase === 'finished'
       ? waitingColor
       : activePhase === 'results' && roundResult
         ? roundResult.targetHex
-        : activePhase === 'drawing' || activePhase === 'drawing_done'
+        : activePhase === 'drawing'
           ? drawingTargetHex
           : pickedColor
 
@@ -359,17 +356,47 @@ export function PlayPage() {
           </SquareHueSlider>
         )
 
-      case 'waiting_for_drawing':
+      case 'playing':
+      case 'playing_done':
+        return (
+          <PlayingBoardCard
+            hue={guessHue}
+            onHueChange={setGuessHue}
+            onResetHue={() => setGuessHue(null)}
+            drawing={incomingDrawing}
+            forceSubmitted={activePhase === 'playing_done'}
+          />
+        )
+
+      case 'drawing':
+        return (
+          <DrawingCanvasCard
+            targetHex={drawingTargetHex}
+            durationSec={60}
+            onSubmit={(sub) => {
+              // Feed the compressed drawing into local state and transition to the spinning waiting state
+              setIncomingDrawing({
+                imageBase64: sub.imageBase64,
+                mime: sub.mime,
+                prompt: sub.prompt,
+                artistName: username || 'You',
+              })
+              setGamePhase('drawing_done')
+            }}
+          />
+        )
+
+      case 'drawing_done':
         return (
           <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
             <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
               <div className="flex flex-col gap-2 p-2">
                 <CardHeader>
                   <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
-                    Artist is Drawing...
+                    Drawing Submitted!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    Waiting for the person drawing to finish their picture and clue...
+                    Waiting for other players to finish drawing...
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
@@ -389,37 +416,6 @@ export function PlayPage() {
               </div>
             </Card>
           </SquareHueSlider>
-        )
-
-      case 'playing':
-      case 'playing_done':
-        return (
-          <PlayingBoardCard
-            hue={guessHue}
-            onHueChange={setGuessHue}
-            onResetHue={() => setGuessHue(null)}
-            drawing={incomingDrawing}
-            forceSubmitted={activePhase === 'playing_done'}
-          />
-        )
-
-      case 'drawing':
-      case 'drawing_done':
-        return (
-          <DrawingCanvasCard
-            targetHex={drawingTargetHex}
-            durationSec={60}
-            forceSubmitted={activePhase === 'drawing_done'}
-            onSubmit={(sub) => {
-              // Also feed the compressed drawing into local state so you can preview it in `playing`
-              setIncomingDrawing({
-                imageBase64: sub.imageBase64,
-                mime: sub.mime,
-                prompt: sub.prompt,
-                artistName: username || 'You',
-              })
-            }}
-          />
         )
 
       case 'results':
@@ -499,7 +495,6 @@ export function PlayPage() {
           <h1
             className={`w-max pl-[0.05em] font-jersey font-semibold tracking-wider uppercase text-center text-(--hue) [text-shadow:0_0_10px_#000,0_0_20px_#000,0_0_32px_#000] ${
               activePhase === 'drawing' ||
-              activePhase === 'drawing_done' ||
               activePhase === 'playing' ||
               activePhase === 'playing_done'
                 ? 'text-4xl sm:text-5xl'

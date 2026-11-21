@@ -1,23 +1,52 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
-    <Style src="project://database/Assets/UI/Menu/Menu.uss" />
+    <Style src="project://database/Assets/UI/Menu/Menu.uss?fileID=7433441132597879392&amp;guid=bd7b51021bae4fdebee2137e8b14dc06&amp;type=3#Menu"/>
     <ui:VisualElement name="menu-root" class="menu-root">
-        <PixelBlastBackground name="background" class="menu-background" pixel-size="10" pattern-density="4" glow="0.5" drift="0.1" hover-radius="50" ripple-thickness="0.4" />
+        <PixelBlastBackground name="background" pixel-size="10" pattern-density="4" glow="0.5" drift="0.1" hover-radius="50" ripple-thickness="0.4" class="menu-background"/>
+        <ui:VisualElement name="character-labels-layer" picking-mode="Ignore" class="character-labels-layer"/>
         <ui:VisualElement name="column" class="menu-column">
             <ui:VisualElement name="header" class="menu-header">
-                <ui:Label name="title" text="HUESLIDER" class="menu-title hue-text" />
-                <ui:Label name="subtitle" text="Find the hue that matches the room" class="menu-subtitle hue-text" />
+                <ui:Label name="title" text="HUESLIDER" class="menu-title hue-text"/>
+                <ui:Label name="subtitle" text="Find the hue that matches the room" class="menu-subtitle hue-text"/>
             </ui:VisualElement>
-            <HueBar name="hue-bar" class="hue-border" />
-            <ui:VisualElement name="card" class="card hue-border">
-                <ui:Label name="card-title" text="JOIN A GAME" class="card-title hue-text" />
-                <ui:Label name="card-description" text="Enter your username and the 4-letter room code" class="card-description hue-text" />
+            <HueBar name="hue-bar" class="hue-border"/>
+
+            <!-- Create Game View (Console Title Screen) -->
+            <ui:VisualElement name="card" class="card card--create hue-border">
+                <ui:Label name="card-title" text="CREATE A GAME" class="card-title hue-text"/>
+                <ui:Label name="card-description" text="Open a game lobby on this screen for players to join with a 4-letter room code" class="card-description hue-dim-text"/>
                 <ui:VisualElement name="card-content" class="card-content">
-                    <ui:TextField name="username" class="menu-input" />
-                    <ui:TextField name="room-code" class="menu-input menu-input--room" />
-                    <ui:Label name="error" class="card-error" />
+                    <ui:Label name="error" class="card-error"/>
                 </ui:VisualElement>
                 <ui:VisualElement name="card-footer" class="card-footer">
-                    <ui:Button name="join" text="JOIN GAME" class="menu-button" />
+                    <ui:Button name="join" text="CREATE GAME" class="menu-button menu-button--primary"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Host Lobby Join Screen (Compact Center Card; Players Populate Around It Clockwise) -->
+            <ui:VisualElement name="lobby-card" class="card card--lobby hue-border is-hidden">
+                <ui:VisualElement name="lobby-header-row" class="lobby-header-row">
+                    <ui:Label name="lobby-title" text="WAITING FOR PLAYERS..." class="lobby-title hue-text"/>
+                    <ui:VisualElement name="player-count-badge" class="lobby-count-badge hue-border">
+                        <ui:Label name="player-count" text="0 / 12" class="lobby-count-text hue-text"/>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="room-code-box" class="lobby-code-box hue-border">
+                    <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
+                    <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
+                </ui:VisualElement>
+
+                <ui:Label name="lobby-description" text="Enter the 4-letter code on your device to join" class="lobby-description hue-dim-text"/>
+                <ui:Label name="lobby-error" class="card-error"/>
+
+                <ui:VisualElement name="lobby-footer" class="card-footer card-footer--lobby">
+                    <ui:Button name="back-button" text="BACK" class="menu-button menu-button--secondary"/>
+                    <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary"/>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="lobby-test-row" class="lobby-test-row">
+                    <ui:Button name="simulate-join" text="+ ADD PLAYER" class="menu-button menu-button--test"/>
+                    <ui:Button name="simulate-leave" text="- LEAVE" class="menu-button menu-button--test"/>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

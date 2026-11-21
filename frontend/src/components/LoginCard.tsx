@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
+import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
 import {
   Card,
   CardHeader,
@@ -19,8 +20,12 @@ import {
 import { DEV_MOCK_MODE, relayClient, RelayJoinError } from '@/lib/relayClient'
 import { useLoginStore } from '@/store/useLoginStore'
 
+interface LoginCardProps {
+  inkColor?: string
+}
+
 // --hue is set by LoginPage to the color picked in the hue slider
-export const LoginCard = () => {
+export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
   const navigate = useNavigate()
   const username = useLoginStore((s) => s.username)
   const room = useLoginStore((s) => s.room)
@@ -89,7 +94,7 @@ export const LoginCard = () => {
             Enter your username and the 4-letter room code
           </CardDescription>
           {/* px-0: already inside CardHeader's padding; text-base: iOS zooms into inputs under 16px */}
-          <CardContent className="flex flex-col gap-4 px-0">
+          <CardContent className="flex flex-col gap-3 px-0">
             <input
               type="text"
               placeholder="Username"
@@ -119,6 +124,7 @@ export const LoginCard = () => {
               }}
               className="border-2 border-(--hue) font-jersey bg-black/50 p-2 text-base uppercase tracking-widest text-(--hue) placeholder:text-(--hue)/60 placeholder:normal-case placeholder:tracking-normal disabled:opacity-60"
             />
+            <LobbyPfpCanvas inkColor={inkColor} />
             {error && (
               <p
                 role="alert"
