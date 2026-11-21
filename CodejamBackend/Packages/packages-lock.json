@@ -1,5 +1,18 @@
 {
   "dependencies": {
+    "com.annulusgames.alchemy": {
+      "version": "https://github.com/annulusgames/Alchemy.git?path=/Alchemy/Assets/Alchemy",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "0643efa783fc22e1d1338cc9030602fa756ba426"
+    },
+    "com.kyrylokuzyk.primetween": {
+      "version": "file:../Packages/com.kyrylokuzyk.primetween.tgz",
+      "depth": 0,
+      "source": "local-tarball",
+      "dependencies": {}
+    },
     "com.unity.2d.animation": {
       "version": "13.0.6",
       "depth": 0,
