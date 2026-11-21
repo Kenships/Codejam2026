@@ -7,6 +7,13 @@
       "dependencies": {},
       "hash": "0643efa783fc22e1d1338cc9030602fa756ba426"
     },
+    "com.endel.nativewebsocket": {
+      "version": "https://github.com/endel/NativeWebSocket.git#upm-2",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "ab561fd372e3a2016b790b9e37277c84e1d3345b"
+    },
     "com.kyrylokuzyk.primetween": {
       "version": "file:../Packages/com.kyrylokuzyk.primetween.tgz",
       "depth": 0,
