@@ -9,6 +9,7 @@ CodejamBackend/[Bb]uild/
 CodejamBackend/[Bb]uilds/
 CodejamBackend/[Ll]ogs/
 CodejamBackend/[Mm]emoryCaptures/
+CodejamBackend/[Uu]ser[Ss]ettings/
 
 # Never ignore Asset meta data
 !CodejamBackend/[Aa]ssets/**/*.meta
