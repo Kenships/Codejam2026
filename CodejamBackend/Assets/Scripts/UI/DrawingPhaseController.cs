@@ -1,0 +1,435 @@
+using System;
+using System.Collections.Generic;
+using Alchemy.Inspector;
+using Core.AudioSystem;
+using PrimeTween;
+using UnityEngine;
+using UnityEngine.UIElements;
+
+/// <summary>
+/// Drives the Drawing Phase console UI in GameScene:
+/// - Runs the frontend's loading rainbow colour shift (24 deg/s HSV cycle) across TrueHueTitle,
+///   PixelBlastBackground, card borders, and timer.
+/// - Displays the drawing countdown timer and submission count.
+/// - Whenever a player submits their drawing (via relay or simulation), pops in that player's
+///   icon (coloured cube + optional PFP + name underneath) around the center card in the same
+///   top-left clockwise circle as the join screen.
+/// </summary>
+[RequireComponent(typeof(UIDocument))]
+public class DrawingPhaseController : MonoBehaviour
+{
+    private const int MaxSeats = 12;
+
+    [SerializeField, Required] private UIDocument document;
+    [SerializeField, AssetsOnly] private AudioClip submitSound;
+
+    [Title("Rainbow Loading Shift")]
+    [Tooltip("Matches frontend PlayPage.tsx (24 deg/s -> ~15s per full rainbow cycle).")]
+    [SerializeField, Min(1f)] private float rainbowDegreesPerSecond = 24f;
+
+    [Title("Testing")]
+    [SerializeField] private bool showSimulateControls = true;
+
+    public event Action SimulateSubmitRequested;
+    public event Action ContinueRequested;
+
+    private VisualElement _root;
+    private PixelBlastBackground _background;
+    private TrueHueTitle _title;
+    private VisualElement _iconsLayer;
+    private Label _drawingTitle;
+    private Label _submissionCount;
+    private Label _timerValue;
+    private Label _description;
+    private VisualElement _testRow;
+    private Button _simulateSubmitButton;
+    private Button _continueButton;
+
+    private readonly Dictionary<string, VisualElement> _submittedIcons = new();
+    private readonly List<VisualElement> _orderedIcons = new();
+    private readonly HashSet<Button> _hoveredButtons = new();
+    private readonly HashSet<Button> _focusedButtons = new();
+
+    private float _rainbowHueDeg;
+    private Color _currentRainbowColor = Color.red;
+    private int _expectedPlayerCount;
+    private bool _isVisible;
+
+    private void Reset()
+    {
+        document = GetComponent<UIDocument>();
+        AutoAssignDefaultAssets();
+    }
+
+    private void Awake()
+    {
+        if (document == null)
+            document = GetComponent<UIDocument>();
+
+        AutoAssignDefaultAssets();
+    }
+
+    private void AutoAssignDefaultAssets()
+    {
+#if UNITY_EDITOR
+        if (submitSound == null)
+            submitSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/BubbleMerge.mp3");
+#endif
+    }
+
+    private void OnEnable()
+    {
+        if (document == null)
+            document = GetComponent<UIDocument>();
+
+        _root = document.rootVisualElement;
+        if (_root == null)
+            return;
+
+        _background = _root.Q<PixelBlastBackground>();
+        _title = _root.Q<TrueHueTitle>("title");
+        _iconsLayer = _root.Q<VisualElement>("submitted-icons-layer");
+        _drawingTitle = _root.Q<Label>("drawing-title");
+        _submissionCount = _root.Q<Label>("submission-count");
+        _timerValue = _root.Q<Label>("drawing-timer");
+        _description = _root.Q<Label>("drawing-description");
+        _testRow = _root.Q<VisualElement>("drawing-test-row");
+        _simulateSubmitButton = _root.Q<Button>("simulate-submit");
+        _continueButton = _root.Q<Button>("next-phase");
+
+        if (_testRow != null)
+            _testRow.style.display = showSimulateControls ? DisplayStyle.Flex : DisplayStyle.None;
+
+        if (_title != null)
+            _title.OverlapAnimate = true;
+
+        RegisterButton(_simulateSubmitButton, OnSimulateSubmitClicked);
+        RegisterButton(_continueButton, OnContinueClicked);
+
+        ApplyRainbowColor(Color.HSVToRGB(0f, 1f, 1f));
+        SetVisible(_isVisible);
+    }
+
+    private void OnDisable()
+    {
+        UnregisterButton(_simulateSubmitButton, OnSimulateSubmitClicked);
+        UnregisterButton(_continueButton, OnContinueClicked);
+        _hoveredButtons.Clear();
+        _focusedButtons.Clear();
+    }
+
+    private void Update()
+    {
+        if (!_isVisible || _root == null)
+            return;
+
+        // Smooth rainbow colour shift matching PlayPage.tsx (24 deg/s)
+        _rainbowHueDeg = (_rainbowHueDeg + Time.deltaTime * rainbowDegreesPerSecond) % 360f;
+        Color rainbow = Color.HSVToRGB(_rainbowHueDeg / 360f, 1f, 1f);
+        ApplyRainbowColor(rainbow);
+
+        LayoutSubmittedIcons();
+    }
+
+    /// <summary>Shows or hides the entire Drawing Phase UI overlay.</summary>
+    public void SetVisible(bool visible)
+    {
+        _isVisible = visible;
+
+        if (_root != null)
+            _root.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+    }
+
+    /// <summary>Resets the Drawing Phase UI for a fresh drawing round.</summary>
+    public void BeginDrawingRound(int expectedPlayers, float durationSeconds)
+    {
+        _expectedPlayerCount = Mathf.Max(1, expectedPlayers);
+        ClearSubmittedIcons();
+        SetRemainingSeconds(durationSeconds);
+        RefreshProgressLabels();
+        SetVisible(true);
+    }
+
+    /// <summary>Updates the countdown timer display.</summary>
+    public void SetRemainingSeconds(float remainingSeconds)
+    {
+        if (_timerValue != null)
+            _timerValue.text = $"{Mathf.Max(0, Mathf.CeilToInt(remainingSeconds))}";
+    }
+
+    /// <summary>
+    /// Displays the submitted player's icon (coloured cube + optional PFP + name underneath)
+    /// at the next top-left clockwise position around the center drawing card.
+    /// </summary>
+    public void MarkPlayerSubmitted(GameSessionData.SessionPlayer player)
+    {
+        if (player == null || string.IsNullOrEmpty(player.playerId))
+            return;
+
+        if (_submittedIcons.ContainsKey(player.playerId))
+            return;
+
+        if (_iconsLayer != null)
+        {
+            VisualElement iconRoot = CreatePlayerIconElement(player);
+            _iconsLayer.Add(iconRoot);
+            _submittedIcons[player.playerId] = iconRoot;
+            _orderedIcons.Add(iconRoot);
+
+            LayoutSubmittedIcons();
+            AnimateIconPopIn(iconRoot);
+
+            if (_background != null)
+            {
+                Vector2 pos = ComputeClockwisePanelPosition(_orderedIcons.Count - 1);
+                _background.AddRipple(pos);
+            }
+        }
+
+        if (submitSound != null && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.NewAudio(submitSound)
+                .RandomizePitch()
+                .Create()
+                .Play();
+        }
+
+        RefreshProgressLabels();
+    }
+
+    public void ClearSubmittedIcons()
+    {
+        foreach (VisualElement icon in _orderedIcons)
+            icon?.RemoveFromHierarchy();
+
+        _submittedIcons.Clear();
+        _orderedIcons.Clear();
+    }
+
+    private VisualElement CreatePlayerIconElement(GameSessionData.SessionPlayer player)
+    {
+        VisualElement container = new()
+        {
+            pickingMode = PickingMode.Ignore
+        };
+        container.AddToClassList("submitted-player-icon");
+
+        VisualElement cube = new()
+        {
+            pickingMode = PickingMode.Ignore
+        };
+        cube.AddToClassList("submitted-player-icon__cube");
+        cube.style.backgroundColor = player.color;
+        SetBorderColor(cube, Color.Lerp(player.color, Color.white, 0.35f));
+
+        if (player.avatar != null)
+        {
+            VisualElement pfp = new()
+            {
+                pickingMode = PickingMode.Ignore
+            };
+            pfp.AddToClassList("submitted-player-icon__pfp");
+            pfp.style.backgroundImage = new StyleBackground(player.avatar);
+            pfp.style.backgroundSize = new BackgroundSize(Length.Percent(100), Length.Percent(100));
+            cube.Add(pfp);
+        }
+
+        Label check = new("READY")
+        {
+            pickingMode = PickingMode.Ignore
+        };
+        check.AddToClassList("submitted-player-icon__check");
+        check.style.color = player.color;
+        SetBorderColor(check, player.color);
+        cube.Add(check);
+
+        Label nameLabel = new((player.name ?? "PLAYER").ToUpperInvariant())
+        {
+            pickingMode = PickingMode.Ignore
+        };
+        nameLabel.AddToClassList("submitted-player-icon__name");
+        nameLabel.style.color = player.color;
+        SetBorderColor(nameLabel, new Color(player.color.r, player.color.g, player.color.b, 0.75f));
+
+        container.Add(cube);
+        container.Add(nameLabel);
+
+        return container;
+    }
+
+    private void AnimateIconPopIn(VisualElement icon)
+    {
+        if (icon == null)
+            return;
+
+        icon.style.scale = new Scale(new Vector3(0.15f, 0.15f, 1f));
+
+        Tween.Custom(
+            target: icon,
+            startValue: 0.15f,
+            endValue: 1f,
+            duration: 0.35f,
+            onValueChange: (el, s) => el.style.scale = new Scale(new Vector3(s, s, 1f)),
+            ease: Easing.Overshoot(1.25f)
+        );
+    }
+
+    private void LayoutSubmittedIcons()
+    {
+        if (_iconsLayer == null || _orderedIcons.Count == 0)
+            return;
+
+        for (int i = 0; i < _orderedIcons.Count; i++)
+        {
+            Vector2 pos = ComputeClockwisePanelPosition(i);
+            VisualElement icon = _orderedIcons[i];
+            icon.style.left = pos.x;
+            icon.style.top = pos.y;
+        }
+    }
+
+    /// <summary>
+    /// Top-left clockwise ring (seat 0 = 135 deg, stepping -30 deg clockwise) around the center card,
+    /// matching the join screen layout.
+    /// </summary>
+    private Vector2 ComputeClockwisePanelPosition(int seatIndex)
+    {
+        Rect rect = _iconsLayer.contentRect;
+        float w = rect.width > 1f ? rect.width : 1920f;
+        float h = rect.height > 1f ? rect.height : 1080f;
+
+        float cx = w * 0.5f;
+        float cy = h * 0.5f;
+        float rx = w * 0.36f;
+        float ry = h * 0.35f;
+
+        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise (-30 deg/step)
+        float angleDeg = 135f - (seatIndex % MaxSeats) * (360f / MaxSeats);
+        float rad = angleDeg * Mathf.Deg2Rad;
+
+        float x = cx + Mathf.Cos(rad) * rx;
+        float y = cy - Mathf.Sin(rad) * ry;
+
+        return new Vector2(x, y);
+    }
+
+    private void RefreshProgressLabels()
+    {
+        int submitted = _submittedIcons.Count;
+        bool allDone = submitted >= _expectedPlayerCount;
+
+        if (_submissionCount != null)
+            _submissionCount.text = $"{submitted} / {_expectedPlayerCount} SUBMITTED";
+
+        if (_drawingTitle != null)
+            _drawingTitle.text = allDone ? "ALL DRAWINGS SUBMITTED!" : "DRAWING IN PROGRESS...";
+
+        if (_description != null)
+        {
+            _description.text = allDone
+                ? "Everyone is ready — moving to the next phase!"
+                : "Draw a clue on your phone and submit before time runs out";
+        }
+
+        if (_simulateSubmitButton != null)
+        {
+            _simulateSubmitButton.SetEnabled(!allDone);
+            _simulateSubmitButton.style.opacity = allDone ? 0.45f : 1f;
+        }
+    }
+
+    private void ApplyRainbowColor(Color rainbow)
+    {
+        _currentRainbowColor = rainbow;
+        Color dim = new(rainbow.r, rainbow.g, rainbow.b, 0.78f);
+
+        _root.Query(className: "rainbow-text").ForEach(e => e.style.color = rainbow);
+        _root.Query(className: "rainbow-dim-text").ForEach(e => e.style.color = dim);
+        _root.Query(className: "rainbow-border").ForEach(e => SetBorderColor(e, rainbow));
+
+        if (_background != null)
+            _background.accentColor = rainbow;
+
+        if (_title != null)
+            _title.BaseColor = rainbow;
+
+        RefreshButton(_simulateSubmitButton);
+        RefreshButton(_continueButton);
+    }
+
+    #region Buttons
+
+    private void OnSimulateSubmitClicked() => SimulateSubmitRequested?.Invoke();
+    private void OnContinueClicked() => ContinueRequested?.Invoke();
+
+    private void RegisterButton(Button button, Action onClick)
+    {
+        if (button == null)
+            return;
+
+        button.clicked += onClick;
+        button.RegisterCallback<PointerEnterEvent, Button>(OnButtonEnter, button);
+        button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonLeave, button);
+        button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
+        button.RegisterCallback<FocusOutEvent, Button>(OnButtonFocusOut, button);
+    }
+
+    private void UnregisterButton(Button button, Action onClick)
+    {
+        if (button == null)
+            return;
+
+        button.clicked -= onClick;
+        button.UnregisterCallback<PointerEnterEvent, Button>(OnButtonEnter);
+        button.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonLeave);
+        button.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
+        button.UnregisterCallback<FocusOutEvent, Button>(OnButtonFocusOut);
+    }
+
+    private void OnButtonEnter(PointerEnterEvent evt, Button button)
+    {
+        _hoveredButtons.Add(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonLeave(PointerLeaveEvent evt, Button button)
+    {
+        _hoveredButtons.Remove(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonFocusIn(FocusInEvent evt, Button button)
+    {
+        _focusedButtons.Add(button);
+        RefreshButton(button);
+    }
+
+    private void OnButtonFocusOut(FocusOutEvent evt, Button button)
+    {
+        _focusedButtons.Remove(button);
+        RefreshButton(button);
+    }
+
+    private void RefreshButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        bool active = (_hoveredButtons.Contains(button) || _focusedButtons.Contains(button)) &&
+                      button.enabledSelf;
+
+        SetBorderColor(button, _currentRainbowColor);
+        button.style.backgroundColor = active ? _currentRainbowColor : new Color(0f, 0f, 0f, 0.45f);
+        button.style.color = active ? Color.black : _currentRainbowColor;
+    }
+
+    private static void SetBorderColor(VisualElement element, Color color)
+    {
+        element.style.borderTopColor = color;
+        element.style.borderRightColor = color;
+        element.style.borderBottomColor = color;
+        element.style.borderLeftColor = color;
+    }
+
+    #endregion
+}

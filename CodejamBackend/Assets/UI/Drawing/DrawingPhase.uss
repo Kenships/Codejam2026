@@ -1,0 +1,255 @@
+/* Drawing Phase Console UI (1920x1080 16:9 reference resolution).
+   Matches the frontend's loading rainbow colour shift (24 deg/s HSV cycle)
+   and the join screen's clockwise player icon ring around the center card. */
+
+.drawing-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 36px;
+    background-color: rgb(0, 0, 0);
+    color: rgb(255, 255, 255);
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.drawing-root .drawing-background {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.drawing-root .submitted-icons-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+.drawing-root .drawing-column {
+    width: 100%;
+    max-width: 540px;
+}
+
+.drawing-root .unity-label {
+    margin: 0;
+    padding: 0;
+}
+
+/* ---- Header & TrueHueTitle ---- */
+
+.drawing-root .drawing-header {
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.drawing-root .menu-title {
+    font-size: 88px;
+    -unity-font-style: bold;
+    letter-spacing: 4px;
+    padding-left: 4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 24px rgb(0, 0, 0);
+}
+
+.drawing-root .true-hue-title {
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-root .true-hue-title__animated {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+}
+
+.drawing-root .true-hue-title__letter {
+    letter-spacing: 1px;
+    padding-left: 0;
+}
+
+.drawing-root .true-hue-title__rh-slot {
+    position: relative;
+    flex-direction: row;
+    align-items: baseline;
+}
+
+.drawing-root .true-hue-title__r {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.drawing-root .drawing-subtitle {
+    font-size: 22px;
+    letter-spacing: 0.8px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 0 14px rgb(0, 0, 0);
+}
+
+/* ---- Center Drawing Card ---- */
+
+.drawing-root .drawing-card {
+    background-color: rgba(0, 0, 0, 0.82);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    padding: 28px 34px 30px 34px;
+    align-items: center;
+}
+
+.drawing-root .drawing-top-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.drawing-root .drawing-card-title {
+    font-size: 26px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    -unity-text-align: middle-left;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
+}
+
+.drawing-root .drawing-badge {
+    padding: 4px 12px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.55);
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-root .drawing-badge-text {
+    font-size: 18px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    white-space: nowrap;
+}
+
+.drawing-root .drawing-timer-box {
+    width: 100%;
+    padding: 12px 24px 14px 24px;
+    margin-bottom: 14px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.65);
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-root .drawing-timer-label {
+    font-size: 16px;
+    letter-spacing: 2.8px;
+    padding-left: 2.8px;
+    -unity-text-align: middle-center;
+    margin-bottom: 2px;
+}
+
+.drawing-root .drawing-timer-value {
+    font-size: 68px;
+    -unity-font-style: bold;
+    letter-spacing: 4px;
+    padding-left: 4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 18px rgb(0, 0, 0);
+}
+
+.drawing-root .drawing-card-description {
+    font-size: 19px;
+    margin-bottom: 16px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 0 8px rgb(0, 0, 0);
+}
+
+/* ---- Buttons ---- */
+
+.drawing-root .drawing-test-row {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.drawing-root .drawing-button.unity-button {
+    min-width: 165px;
+    height: 44px;
+    margin: 0 6px;
+    padding: 6px 18px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.45);
+    color: rgb(255, 255, 255);
+    font-size: 18px;
+    -unity-font-style: bold;
+    letter-spacing: 1.8px;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+/* ---- Submitted Player Icons (Clockwise Around Center Card, Like Join Screen) ---- */
+
+.drawing-root .submitted-player-icon {
+    position: absolute;
+    translate: -50% -50%;
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-root .submitted-player-icon__cube {
+    width: 92px;
+    height: 92px;
+    border-width: 3px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(255, 255, 255);
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.drawing-root .submitted-player-icon__pfp {
+    width: 70px;
+    height: 70px;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.drawing-root .submitted-player-icon__check {
+    position: absolute;
+    right: -10px;
+    top: -10px;
+    padding: 2px 6px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(0, 0, 0);
+    font-size: 14px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.drawing-root .submitted-player-icon__name {
+    padding: 2px 10px;
+    background-color: rgba(0, 0, 0, 0.78);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    font-size: 22px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}

@@ -1,0 +1,34 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Drawing/DrawingPhase.uss"/>
+    <ui:VisualElement name="drawing-root" class="drawing-root">
+        <PixelBlastBackground name="background" pixel-size="10" pattern-density="4" glow="0.5" drift="0.1" hover-radius="50" ripple-thickness="0.4" class="drawing-background"/>
+        <ui:VisualElement name="submitted-icons-layer" picking-mode="Ignore" class="submitted-icons-layer"/>
+        <ui:VisualElement name="drawing-column" class="drawing-column">
+            <ui:VisualElement name="drawing-header" class="drawing-header">
+                <TrueHueTitle name="title" overlap-animate="true" class="true-hue-title"/>
+                <ui:Label name="subtitle" text="Everyone is drawing their secret hue" class="drawing-subtitle rainbow-dim-text"/>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="drawing-card" class="drawing-card rainbow-border">
+                <ui:VisualElement name="drawing-top-row" class="drawing-top-row">
+                    <ui:Label name="drawing-title" text="DRAWING IN PROGRESS..." class="drawing-card-title rainbow-text"/>
+                    <ui:VisualElement name="submission-badge" class="drawing-badge rainbow-border">
+                        <ui:Label name="submission-count" text="0 / 4 SUBMITTED" class="drawing-badge-text rainbow-text"/>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement name="timer-box" class="drawing-timer-box rainbow-border">
+                    <ui:Label name="timer-label" text="TIME REMAINING" class="drawing-timer-label rainbow-dim-text"/>
+                    <ui:Label name="drawing-timer" text="60" class="drawing-timer-value rainbow-text"/>
+                </ui:VisualElement>
+
+                <ui:Label name="drawing-description" text="Draw a clue on your phone and submit before time runs out" class="drawing-card-description rainbow-dim-text"/>
+
+                <ui:VisualElement name="drawing-test-row" class="drawing-test-row">
+                    <ui:Button name="simulate-submit" text="+ SIMULATE SUBMIT" class="drawing-button"/>
+                    <ui:Button name="next-phase" text="CONTINUE" class="drawing-button drawing-button--primary"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

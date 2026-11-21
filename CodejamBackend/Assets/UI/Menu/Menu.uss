@@ -95,6 +95,34 @@
     padding-left: 3.8px;
 }
 
+.menu-root .true-hue-title {
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-root .true-hue-title__animated {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+}
+
+.menu-root .true-hue-title__letter {
+    letter-spacing: 1px;
+    padding-left: 0;
+}
+
+.menu-root .true-hue-title__rh-slot {
+    position: relative;
+    flex-direction: row;
+    align-items: baseline;
+}
+
+.menu-root .true-hue-title__r {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
 .menu-root .menu-subtitle {
     font-size: 26px;
     letter-spacing: 0.8px;

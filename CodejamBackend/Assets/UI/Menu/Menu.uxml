@@ -5,7 +5,7 @@
         <ui:VisualElement name="character-labels-layer" picking-mode="Ignore" class="character-labels-layer"/>
         <ui:VisualElement name="column" class="menu-column">
             <ui:VisualElement name="header" class="menu-header">
-                <ui:Label name="title" text="HUESLIDER" class="menu-title hue-text"/>
+                <TrueHueTitle name="title" class="true-hue-title"/>
                 <ui:Label name="subtitle" text="Find the hue that matches the room" class="menu-subtitle hue-text"/>
             </ui:VisualElement>
             <HueBar name="hue-bar" class="hue-border"/>

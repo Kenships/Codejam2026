@@ -4,6 +4,7 @@ using Alchemy.Inspector;
 using Codejam.Networking;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
 /// <summary>
@@ -50,6 +51,11 @@ public class MenuController : MonoBehaviour
     [Tooltip("Show the on-screen + ADD PLAYER / - LEAVE simulation buttons inside the lobby card for testing.")]
     [SerializeField] private bool showSimulateButtons = true;
 
+    [Tooltip("Automatically load GameScene when Start Match is pressed.")]
+    [SerializeField] private bool loadGameSceneOnStart = true;
+
+    [SerializeField] private string gameSceneName = "GameScene";
+
     [Title("Events")]
     [SerializeField] private UnityEvent onCreateGameRequested;
     [SerializeField] private UnityEvent<string> onStartMatchRequested;
@@ -66,6 +72,7 @@ public class MenuController : MonoBehaviour
     private VisualElement _column;
     private VisualElement _characterLabelsLayer;
     private PixelBlastBackground _background;
+    private TrueHueTitle _title;
     private HueBar _hueBar;
 
     // Create Game view elements
@@ -132,6 +139,7 @@ public class MenuController : MonoBehaviour
         _column = _root.Q<VisualElement>("column");
         _characterLabelsLayer = _root.Q<VisualElement>("character-labels-layer");
         _background = _root.Q<PixelBlastBackground>();
+        _title = _root.Q<TrueHueTitle>("title");
         _hueBar = _root.Q<HueBar>();
 
         _createCard = _root.Q<VisualElement>("card");
@@ -330,10 +338,18 @@ public class MenuController : MonoBehaviour
         ShowError(null);
         PulseBackgroundRipple(_startMatchButton);
 
+        // Hand off joined players (names, picked colours, optional PFPs) to GameScene
+        GameSessionData.SetLobbySession(_currentRoomCode, _players);
+
         StartMatchRequested?.Invoke(_currentRoomCode);
         onStartMatchRequested?.Invoke(_currentRoomCode);
         JoinRequested?.Invoke("HOST", _currentRoomCode);
         onJoinRequested?.Invoke("HOST", _currentRoomCode);
+
+        if (loadGameSceneOnStart && !string.IsNullOrEmpty(gameSceneName))
+        {
+            SceneManager.LoadScene(gameSceneName);
+        }
     }
 
     private void SetView(bool inLobby)
@@ -343,6 +359,9 @@ public class MenuController : MonoBehaviour
         _column?.EnableInClassList("menu-column--lobby", inLobby);
         _createCard?.EnableInClassList("is-hidden", inLobby);
         _lobbyCard?.EnableInClassList("is-hidden", !inLobby);
+
+        if (_title != null)
+            _title.OverlapAnimate = inLobby;
     }
 
     #endregion
@@ -847,6 +866,9 @@ public class MenuController : MonoBehaviour
 
         if (_background != null)
             _background.accentColor = hue;
+
+        if (_title != null)
+            _title.BaseColor = hue;
 
         if (_createError != null)
             _createError.style.color = ErrorColor;
