@@ -1,5 +1,7 @@
 import { WebSocket } from "ws";
 import type { Rooms } from "./rooms.ts";
+import type { RateLimit, Timings } from "./config.ts";
+import { TokenBucket } from "./rateLimit.ts";
 import type { Conn, Room } from "./room.ts";
 import {
     type ClientMessage,
@@ -35,7 +37,7 @@ function sendToPlayers(room: Room, msg: ServerMessage) {
  * Called once for every new WebSocket.
  * Everything below is per-socket: each socket gets its own conn and identity.
  */
-export function handleConnection(ws: WebSocket, rooms: Rooms): void {
+export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, rateLimit: RateLimit): void {
     const conn = wrap(ws);
     let identity: Identity = { kind: "none" };
     const fail = (code: ErrorCode) => conn.send({ t: "error", code });
@@ -121,7 +123,22 @@ export function handleConnection(ws: WebSocket, rooms: Rooms): void {
 
     // ---- socket events ----
 
+    // Per-socket rate limit. `limited` is true while we're dropping messages,
+    // so a flood gets ONE rate_limited error, not one error per message.
+    const bucket = new TokenBucket(rateLimit.burst, rateLimit.perSecond);
+    let limited = false;
+
     ws.on("message", (data, isBinary) => {
+        // Checked before parsing: junk costs a token too.
+        if (!bucket.take()) {
+            if (!limited) {
+                limited = true;
+                fail("rate_limited");
+            }
+            return;
+        }
+        limited = false;
+
         if (isBinary) {
             fail("bad_json");
             return;
@@ -134,6 +151,8 @@ export function handleConnection(ws: WebSocket, rooms: Rooms): void {
         }
 
         const msg = parsed.msg;
+        // Any valid message counts as activity, for the idle-room sweep.
+        if (identity.kind !== "none") identity.room.touch();
         try {
             switch (msg.t) {
                 case "host_create":
@@ -168,15 +187,21 @@ export function handleConnection(ws: WebSocket, rooms: Rooms): void {
             // then the player isn't actually gone, so the host hears nothing.
             if (room.markDisconnected(playerId, conn)) {
                 room.getHost()?.send({ t: "player_disconnected", playerId });
+                // Hold the seat for a while; rejoin() cancels this.
+                room.startPlayerGrace(playerId, timings.playerGraceMs, () => {
+                    const seat = room.removePlayer(playerId);
+                    if (seat) room.getHost()?.send({ t: "player_left", playerId, reason: "timeout" });
+                });
             }
         } else if (identity.kind === "host") {
             const { room } = identity;
             if (room.getHost() === conn) {
                 room.setHost(null);
                 sendToPlayers(room, { t: "host_lost" });
+                // Keep the room for a while; host_resume (setHost) cancels this.
+                room.startHostGrace(timings.hostGraceMs, () => rooms.closeRoom(room, "host_timeout"));
             }
         }
-        // TODO step 5: grace-period timers (player 30 s, host 60 s)
     });
 
     // Without a listener, a socket error (e.g. an oversized frame) is an

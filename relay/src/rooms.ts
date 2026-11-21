@@ -1,5 +1,6 @@
 import { Room, type Conn } from "./room.ts";
 import { generateHostKey, generateRoomCode } from "./codes.ts";
+import type { RoomClosed } from "./protocol.ts";
 
 /** Every live room, keyed by its 4-letter code. */
 export class Rooms {
@@ -30,6 +31,40 @@ export class Rooms {
     /** All rooms, for cleanup sweeps and shutdown (step 5). */
     values(): IterableIterator<Room> {
         return this.rooms.values();
+    }
+
+    /**
+     * Shut a room down for good: stop its timers, tell everyone why,
+     * close their sockets, and forget the room.
+     */
+    closeRoom(room: Room, reason: RoomClosed["reason"]): void {
+        room.shutdown();
+        // 1001 "going away" for a server shutdown, 1000 "normal" otherwise.
+        const closeCode = reason === "server_shutdown" ? 1001 : 1000;
+        const notice: RoomClosed = { t: "room_closed", reason };
+
+        const everyone = room.ConnectedPlayers().map((seat) => seat.conn);
+        const host = room.getHost();
+        if (host) everyone.push(host);
+
+        for (const conn of everyone) {
+            conn.send(notice);
+            conn.close(closeCode, reason);
+        }
+        this.rooms.delete(room.getCode());
+    }
+
+    /** Close every room that has been silent for longer than idleMs. */
+    closeIdleRooms(idleMs: number, now = Date.now()): void {
+        // Copy first: closeRoom deletes from the map we'd be looping over.
+        for (const room of [...this.rooms.values()]) {
+            if (now - room.getLastActivity() > idleMs) this.closeRoom(room, "idle");
+        }
+    }
+
+    /** Close every room (server shutdown, or tests tearing down). */
+    closeAll(reason: RoomClosed["reason"]): void {
+        for (const room of [...this.rooms.values()]) this.closeRoom(room, reason);
     }
 }
 

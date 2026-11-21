@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import WebSocket from "ws";
+import WebSocket, { type ClientOptions } from "ws";
 import type { Conn } from "../src/room.ts";
 import type { ServerMessage } from "../src/protocol.ts";
 
@@ -55,9 +55,12 @@ export type TestClient = {
     close(): void;
 };
 
-/** Open a real WebSocket to the relay and wrap it in a test-friendly API. */
-export function connect(port: number): Promise<TestClient> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+/**
+ * Open a real WebSocket to the relay and wrap it in a test-friendly API.
+ * Pass { autoPong: false } to imitate a client that died silently.
+ */
+export function connect(port: number, options?: ClientOptions): Promise<TestClient> {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, options);
     const queue: ServerMessage[] = [];
     const waiters: ((msg: ServerMessage) => void)[] = [];
 
@@ -109,4 +112,27 @@ export function connect(port: number): Promise<TestClient> {
         ws.once("open", () => resolve(client));
         ws.once("error", reject);
     });
+}
+
+// ---------------------------------------------------------------------------
+// Room setup shared by the integration tests
+// ---------------------------------------------------------------------------
+
+export type Player = { client: TestClient; playerId: string; name: string };
+
+/** Host creates a room and each name joins. All setup messages are consumed. */
+export async function setupRoom(port: number, names: string[]) {
+    const host = await connect(port);
+    host.send({ t: "host_create" });
+    const { room, hostKey } = await host.expect("room_created");
+
+    const players: Player[] = [];
+    for (const name of names) {
+        const client = await connect(port);
+        client.send({ t: "join", room, name });
+        const joined = await client.expect("joined");
+        await host.expect("player_joined");
+        players.push({ client, playerId: joined.playerId, name });
+    }
+    return { host, room, hostKey, players };
 }

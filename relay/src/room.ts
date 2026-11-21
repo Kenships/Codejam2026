@@ -14,6 +14,8 @@ export type Seat = {
     playerId: string;
     name: string;
     conn: Conn | null;
+    /** Running while the player is disconnected; removes them when it fires. */
+    graceTimer: NodeJS.Timeout | null;
 }
 
 
@@ -23,6 +25,12 @@ export class Room {
     private host : Conn | null;
     private seats : Map<string, Seat>;
     private broadcasterId: string | null;
+    /** Running while the host is disconnected; closes the room when it fires. */
+    private hostGraceTimer: NodeJS.Timeout | null;
+    /** Date.now() of the last message anyone in this room sent. */
+    private lastActivity: number;
+    /** Once true, the room is finished and refuses to start new timers. */
+    private closed = false;
 
     constructor(code : string, hostKey : string, host : Conn | null) {
         this.code = code;
@@ -30,6 +38,8 @@ export class Room {
         this.host = host;
         this.seats = new Map<string, Seat>()
         this.broadcasterId = null;
+        this.hostGraceTimer = null;
+        this.lastActivity = Date.now();
     }
 
     addPlayer(name : string, conn : Conn) : AddPlayerResult {
@@ -48,7 +58,7 @@ export class Room {
 
 
         const newPlayerId = generatePlayerId();
-        const seat : Seat = { playerId: newPlayerId, name : trimmed, conn : conn};
+        const seat : Seat = { playerId: newPlayerId, name : trimmed, conn : conn, graceTimer: null };
         this.seats.set(newPlayerId, seat);
         return { ok: true, seat};
     }
@@ -61,6 +71,7 @@ export class Room {
         
         const oldConn = seat.conn;
         seat.conn = conn;
+        this.cancelPlayerGrace(seat);
         return { seat, oldConn};
     }
 
@@ -75,6 +86,7 @@ export class Room {
 
     removePlayer(playerId : string) {
         const deletedSeat = this.seats.get(playerId);
+        if (deletedSeat) this.cancelPlayerGrace(deletedSeat);
         this.seats.delete(playerId);
         if (this.broadcasterId === playerId) {
             this.broadcasterId = null;
@@ -116,6 +128,7 @@ export class Room {
 
     setHost(conn : Conn | null) {
         this.host = conn;
+        if (conn !== null) this.cancelHostGrace();
     }
 
     getBroadcasterId() {
@@ -150,6 +163,71 @@ export class Room {
 
     getHostKey() {
         return this.hostKey
+    }
+
+    // ---- activity ----
+
+    /** Record that someone in the room just sent a message. */
+    touch() {
+        this.lastActivity = Date.now();
+    }
+
+    getLastActivity() {
+        return this.lastActivity;
+    }
+
+    // ---- grace timers ----
+    // The room only stores and cancels timers. What happens when one fires
+    // is decided by the caller (connection.ts), passed in as onExpire.
+
+    /** Start (or restart) a dropped player's countdown. */
+    startPlayerGrace(playerId : string, ms : number, onExpire : () => void) {
+        if (this.closed) return;
+        const seat = this.seats.get(playerId);
+        if (!seat) return;
+        this.cancelPlayerGrace(seat); // never two timers for one seat
+        seat.graceTimer = setTimeout(() => {
+            seat.graceTimer = null;
+            onExpire();
+        }, ms);
+    }
+
+    private cancelPlayerGrace(seat : Seat) {
+        if (seat.graceTimer) {
+            clearTimeout(seat.graceTimer);
+            seat.graceTimer = null;
+        }
+    }
+
+    /** Start (or restart) the countdown after the host drops. */
+    startHostGrace(ms : number, onExpire : () => void) {
+        if (this.closed) return;
+        this.cancelHostGrace();
+        this.hostGraceTimer = setTimeout(() => {
+            this.hostGraceTimer = null;
+            onExpire();
+        }, ms);
+    }
+
+    private cancelHostGrace() {
+        if (this.hostGraceTimer) {
+            clearTimeout(this.hostGraceTimer);
+            this.hostGraceTimer = null;
+        }
+    }
+
+    /**
+     * Mark the room finished and stop every countdown. Afterwards no new
+     * timers can start, even from close events of sockets we're closing.
+     */
+    shutdown() {
+        this.closed = true;
+        this.cancelHostGrace();
+        for (const seat of this.seats.values()) this.cancelPlayerGrace(seat);
+    }
+
+    isClosed() {
+        return this.closed;
     }
 
 }

@@ -23,7 +23,8 @@ inspects the game payload `d`.
 | Max frame size | 64 KB. Larger frames close the socket with code `1009`. |
 | Ordering | Messages from one sender arrive in the order they were sent. No ordering is guaranteed *between* different senders. |
 | Heartbeat | Relay sends a WebSocket `ping` every 25 s. Browsers and NativeWebSocket answer automatically — clients do nothing. A socket that misses a pong is terminated. |
-| Rate limit | ~40 messages/second per socket. Excess messages are dropped with `error: rate_limited`. |
+| Rate limit | Per socket: bursts of up to 40 messages, refilling at 40/second. Over the limit, messages are dropped. The sender gets **one** `error: rate_limited` when it first goes over, then further drops are silent until it slows down. Every frame counts, including invalid ones. |
+| Origin | Browser connections must come from an allowed origin (`ALLOWED_ORIGINS`), otherwise the socket is closed with `1008 "origin not allowed"`. Clients that send no `Origin` header (Unity) are always allowed. |
 | Room size | 1 host + max **12 players**. Disconnected players still hold a seat (and count) until their grace period ends. |
 | HTTP | `GET /healthz` → `200 {"ok":true,"uptime":<seconds>}`. Everything else is `404`. |
 
@@ -152,7 +153,8 @@ ignored, so a phone can never impersonate the host or another player.
 | Player socket drops | 30 s | `player_left {reason:"timeout"}` to host, seat freed |
 | Host socket drops | 60 s | `room_closed {reason:"host_timeout"}` to players |
 | No messages in a room | 10 min | `room_closed {reason:"idle"}` |
-| Missed heartbeat pong | 1 interval (25 s) | Socket terminated (counts as a drop) |
+| Missed heartbeat pong | 25–50 s (the next ping after the unanswered one) | Socket terminated (counts as a drop, so the player grace period starts) |
+| Server shutdown (redeploy) | up to 2 s for clients to close | `room_closed {reason:"server_shutdown"}`, then close code `1001` |
 
 ---
 
@@ -214,6 +216,9 @@ Send `remainingMs`, not absolute timestamps — device clocks are not in sync.
 - `JsonUtility` cannot parse the arbitrary `d` object. Use Newtonsoft
   (`com.unity.nuget.newtonsoft-json`): parse to `JObject`, switch on `["t"]`.
 - On unexpected close, reconnect and send `host_resume` with the saved `room` + `hostKey`.
+- **Keep the room alive:** a room with no messages for 10 minutes is closed (`room_closed {reason:"idle"}`).
+  Heartbeat pings don't count, only real messages. While a game is waiting (lobby, long pauses), re-send
+  `state` to `"all"` every ~30 s even if nothing changed. It also re-syncs any phone that missed an update.
 
 **React (browser `WebSocket`)**
 - Pages is served over HTTPS, so the relay URL **must** be `wss://`.

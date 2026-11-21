@@ -5,34 +5,20 @@
 import { afterEach, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { startRelay, type Relay } from "../src/server.ts";
-import { connect, type TestClient } from "./helpers.ts";
+import { connect, setupRoom as setupRoomAt, type Player } from "./helpers.ts";
 
 let relay: Relay;
 beforeEach(async () => {
-    relay = await startRelay(0);
+    // Bind to 127.0.0.1 itself: with port 0 on all interfaces, the OS can hand
+    // out a port another local app already holds on 127.0.0.1 (seen as a 404).
+    relay = await startRelay({ port: 0, host: "127.0.0.1" });
 });
 afterEach(async () => {
     await relay.close();
 });
 
-type Player = { client: TestClient; playerId: string; name: string };
-
-/** Host creates a room and each name joins. All setup messages are consumed. */
-async function setupRoom(names: string[]) {
-    const host = await connect(relay.port);
-    host.send({ t: "host_create" });
-    const { room, hostKey } = await host.expect("room_created");
-
-    const players: Player[] = [];
-    for (const name of names) {
-        const client = await connect(relay.port);
-        client.send({ t: "join", room, name });
-        const joined = await client.expect("joined");
-        await host.expect("player_joined");
-        players.push({ client, playerId: joined.playerId, name });
-    }
-    return { host, room, hostKey, players };
-}
+/** Host creates a room on this test's relay and each name joins. */
+const setupRoom = (names: string[]) => setupRoomAt(relay.port, names);
 
 // ---------------------------------------------------------------------------
 
