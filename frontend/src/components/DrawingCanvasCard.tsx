@@ -6,7 +6,7 @@ import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { Eraser, Trash2, Undo2 } from 'lucide-react'
+import { Check, Eraser, Trash2, Undo2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,6 +39,8 @@ interface DrawingCanvasCardProps {
   targetHex: string
   /** Round drawing duration in seconds (default 60s) */
   durationSec?: number
+  /** Force submitted/waiting state for dev preview */
+  forceSubmitted?: boolean
   onSubmit?: (submission: DrawingSubmission) => void
 }
 
@@ -66,6 +68,7 @@ function quantizeCoord(n: number): number {
 export function DrawingCanvasCard({
   targetHex,
   durationSec = 60,
+  forceSubmitted = false,
   onSubmit,
 }: DrawingCanvasCardProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -83,7 +86,8 @@ export function DrawingCanvasCard({
   const [isEraser, setIsEraser] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [secondsLeft, setSecondsLeft] = useState(durationSec)
-  const [submitted, setSubmitted] = useState(false)
+  const [localSubmitted, setLocalSubmitted] = useState(false)
+  const submitted = localSubmitted || forceSubmitted
 
   const promptRef = useRef(prompt)
   useEffect(() => {
@@ -175,7 +179,7 @@ export function DrawingCanvasCard({
     submittedRef.current = true
     activeStrokeRef.current = null
     flushStrokeBatch()
-    setSubmitted(true)
+    setLocalSubmitted(true)
 
     const trimmedPrompt = promptRef.current.trim()
     const canvas = canvasRef.current
@@ -378,102 +382,109 @@ export function DrawingCanvasCard({
             onPointerUp={finishStroke}
             onPointerCancel={finishStroke}
             className={`h-full w-full touch-none ${
-              submitted ? 'cursor-default opacity-80' : 'cursor-crosshair'
+              submitted ? 'cursor-default opacity-85' : 'cursor-crosshair'
             }`}
           />
-          {submitted && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/45">
-              <span className="rounded border-2 border-(--hue) bg-black/85 px-4 py-1.5 text-xl sm:text-2xl text-(--hue)">
-                Drawing Submitted!
+        </div>
+
+        {submitted ? (
+          <div className="flex w-full flex-col items-center gap-1 rounded border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
+            {prompt.trim() && (
+              <p className="text-sm sm:text-base text-(--hue)/85">
+                Clue: &ldquo;{prompt.trim()}&rdquo;
+              </p>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Check className="h-4 w-4 text-(--hue)" />
+              <span className="text-base sm:text-lg text-(--hue)">
+                Waiting for other players to finish...
               </span>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            {/* Tools row */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1">
+                {BRUSH_SIZES.map((brush) => (
+                  <button
+                    key={brush.label}
+                    type="button"
+                    onClick={() => {
+                      setIsEraser(false)
+                      setBrushSize(brush.value)
+                    }}
+                    className={`h-8 w-8 rounded border-2 text-sm cursor-pointer ${
+                      !isEraser && brushSize === brush.value
+                        ? 'border-(--hue) bg-(--hue) text-black font-semibold'
+                        : 'border-(--hue)/60 bg-black/60 text-(--hue) hover:border-(--hue)'
+                    }`}
+                  >
+                    {brush.label}
+                  </button>
+                ))}
 
-        {/* Tools row */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            {BRUSH_SIZES.map((brush) => (
-              <button
-                key={brush.label}
-                type="button"
-                disabled={submitted}
-                onClick={() => {
-                  setIsEraser(false)
-                  setBrushSize(brush.value)
-                }}
-                className={`h-8 w-8 rounded border-2 text-sm cursor-pointer disabled:opacity-40 ${
-                  !isEraser && brushSize === brush.value
-                    ? 'border-(--hue) bg-(--hue) text-black font-semibold'
-                    : 'border-(--hue)/60 bg-black/60 text-(--hue) hover:border-(--hue)'
-                }`}
+                <button
+                  type="button"
+                  aria-label="Eraser"
+                  title="Eraser"
+                  onClick={() => setIsEraser((prev) => !prev)}
+                  className={`flex h-8 w-8 items-center justify-center rounded border-2 cursor-pointer ${
+                    isEraser
+                      ? 'border-(--hue) bg-(--hue) text-black'
+                      : 'border-(--hue)/60 bg-black/60 text-(--hue) hover:border-(--hue)'
+                  }`}
+                >
+                  <Eraser className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={strokesCount === 0}
+                  aria-label="Undo"
+                  title="Undo"
+                  onClick={handleUndo}
+                  className="flex h-8 items-center gap-1 rounded border-2 border-(--hue)/60 bg-black/60 px-2 text-sm text-(--hue) cursor-pointer hover:border-(--hue) disabled:opacity-40"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  <span>Undo</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={strokesCount === 0}
+                  aria-label="Clear canvas"
+                  title="Clear"
+                  onClick={handleClear}
+                  className="flex h-8 items-center gap-1 rounded border-2 border-(--hue)/60 bg-black/60 px-2 text-sm text-(--hue) cursor-pointer hover:border-(--hue) disabled:opacity-40"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Clear</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Prompt input + Submit */}
+            <form onSubmit={handleFormSubmit} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Write a clue for your colour..."
+                maxLength={PROMPT_MAX_LENGTH}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="min-w-0 flex-1 border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base text-(--hue) placeholder:text-(--hue)/60"
+              />
+              <Button
+                type="submit"
+                className="shrink-0 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-3 py-1.5 hover:bg-(--hue) hover:text-black"
               >
-                {brush.label}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              disabled={submitted}
-              aria-label="Eraser"
-              title="Eraser"
-              onClick={() => setIsEraser((prev) => !prev)}
-              className={`flex h-8 w-8 items-center justify-center rounded border-2 cursor-pointer disabled:opacity-40 ${
-                isEraser
-                  ? 'border-(--hue) bg-(--hue) text-black'
-                  : 'border-(--hue)/60 bg-black/60 text-(--hue) hover:border-(--hue)'
-              }`}
-            >
-              <Eraser className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={submitted || strokesCount === 0}
-              aria-label="Undo"
-              title="Undo"
-              onClick={handleUndo}
-              className="flex h-8 items-center gap-1 rounded border-2 border-(--hue)/60 bg-black/60 px-2 text-sm text-(--hue) cursor-pointer hover:border-(--hue) disabled:opacity-40"
-            >
-              <Undo2 className="h-3.5 w-3.5" />
-              <span>Undo</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={submitted || strokesCount === 0}
-              aria-label="Clear canvas"
-              title="Clear"
-              onClick={handleClear}
-              className="flex h-8 items-center gap-1 rounded border-2 border-(--hue)/60 bg-black/60 px-2 text-sm text-(--hue) cursor-pointer hover:border-(--hue) disabled:opacity-40"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>Clear</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Prompt input + Submit */}
-        <form onSubmit={handleFormSubmit} className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Write a clue for your colour..."
-            maxLength={PROMPT_MAX_LENGTH}
-            disabled={submitted}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            className="min-w-0 flex-1 border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base text-(--hue) placeholder:text-(--hue)/60 disabled:opacity-60"
-          />
-          <Button
-            type="submit"
-            disabled={submitted}
-            className="shrink-0 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-3 py-1.5 hover:bg-(--hue) hover:text-black disabled:opacity-50"
-          >
-            {submitted ? 'Sent' : 'Submit'}
-          </Button>
-        </form>
+                Submit
+              </Button>
+            </form>
+          </>
+        )}
       </CardContent>
     </Card>
   )

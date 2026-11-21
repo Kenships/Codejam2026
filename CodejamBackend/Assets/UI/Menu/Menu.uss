@@ -1,6 +1,6 @@
-/* Port of the frontend's LoginPage + LoginCard (desktop "sm:" sizes).
-   Hue colours (text, borders, button hover) are applied from MenuController,
-   since USS variables can't be changed at runtime. */
+/* Console / TV Host Menu & Lobby UI (1920x1080 16:9 reference resolution).
+   World-space ColorBody cubes meander and merge in the background rendered by
+   Main Camera, so .menu-root uses a transparent background. */
 
 .menu-root {
     position: absolute;
@@ -10,8 +10,8 @@
     bottom: 0;
     align-items: center;
     justify-content: center;
-    padding: 16px;
-    background-color: rgb(0, 0, 0);
+    padding: 24px 36px;
+    background-color: rgba(0, 0, 0, 0);
     color: rgb(255, 255, 255);
     -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
 }
@@ -22,12 +22,45 @@
     top: 0;
     right: 0;
     bottom: 0;
+    opacity: 0.35;
 }
 
-/* w-full max-w-100 */
+.menu-root .character-labels-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+.menu-root .character-name-label {
+    position: absolute;
+    translate: -50% -50%;
+    padding: 2px 10px;
+    background-color: rgba(0, 0, 0, 0.72);
+    border-width: 2px;
+    border-color: rgba(255, 255, 255, 0.45);
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+.menu-root .is-hidden {
+    display: none;
+}
+
+/* Compact centered column so player character cubes have a clear ring around the join screen */
 .menu-root .menu-column {
     width: 100%;
-    max-width: 400px;
+    max-width: 560px;
+}
+
+.menu-root .menu-column--lobby {
+    max-width: 500px;
 }
 
 .menu-root .unity-label {
@@ -39,143 +72,251 @@
 
 .menu-root .menu-header {
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
 }
 
-/* text-8xl font-semibold tracking-wider uppercase */
+.menu-root .menu-column--lobby .menu-header {
+    margin-bottom: 10px;
+}
+
 .menu-root .menu-title {
-    font-size: 96px;
+    font-size: 112px;
     -unity-font-style: bold;
-    letter-spacing: 4.8px;
-    padding-left: 4.8px;
+    letter-spacing: 5.5px;
+    padding-left: 5.5px;
     -unity-text-align: middle-center;
     white-space: nowrap;
-    text-shadow: 0 0 20px rgb(0, 0, 0);
+    text-shadow: 0 0 24px rgb(0, 0, 0);
 }
 
-/* text-2xl */
+.menu-root .menu-column--lobby .menu-title {
+    font-size: 76px;
+    letter-spacing: 3.8px;
+    padding-left: 3.8px;
+}
+
 .menu-root .menu-subtitle {
-    font-size: 24px;
+    font-size: 26px;
+    letter-spacing: 0.8px;
     -unity-text-align: middle-center;
     white-space: normal;
-    text-shadow: 0 0 12px rgb(0, 0, 0);
+    text-shadow: 0 0 14px rgb(0, 0, 0);
 }
 
-/* ---- Hue bar (h-3 border-2) ---- */
+.menu-root .menu-column--lobby .menu-subtitle {
+    font-size: 20px;
+}
+
+/* ---- Hue bar ---- */
 
 .menu-root .hue-bar {
-    height: 12px;
+    height: 16px;
     width: 100%;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
     border-width: 2px;
     border-color: rgb(255, 255, 255);
     background-color: rgb(255, 255, 255);
 }
 
-/* w-4 rounded-sm border-2 bg-white, centred on the value */
+.menu-root .menu-column--lobby .hue-bar {
+    height: 14px;
+    margin-bottom: 12px;
+}
+
 .menu-root .hue-bar__handle {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 16px;
+    top: -3px;
+    bottom: -3px;
+    width: 18px;
     translate: -50% 0;
     background-color: rgb(255, 255, 255);
     border-width: 2px;
-    border-color: rgb(231, 229, 228);
-    border-radius: 6px;
+    border-color: rgb(15, 15, 15);
+    border-radius: 3px;
 }
 
-/* ---- Card (bg-black/70 border-2; py-8 + form p-2 + header px-8) ---- */
+/* ---- Card Base ---- */
 
 .menu-root .card {
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.82);
     border-width: 2px;
     border-color: rgb(255, 255, 255);
-    padding: 40px;
 }
 
-/* sm:text-2xl font-semibold tracking-wider uppercase */
+.menu-root .card--create {
+    padding: 40px 44px;
+    align-items: center;
+}
+
+.menu-root .card--lobby {
+    padding: 24px 32px 26px 32px;
+    align-items: center;
+}
+
 .menu-root .card-title {
-    font-size: 24px;
+    font-size: 40px;
     -unity-font-style: bold;
-    letter-spacing: 1.2px;
+    letter-spacing: 2.2px;
+    padding-left: 2.2px;
     -unity-text-align: middle-center;
-    margin-bottom: 6px;
-    text-shadow: 0 0 10px rgb(0, 0, 0);
+    margin-bottom: 8px;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
 }
 
-/* sm:text-base leading-relaxed */
 .menu-root .card-description {
-    font-size: 16px;
+    font-size: 20px;
+    max-width: 440px;
     -unity-text-align: middle-center;
     white-space: normal;
-    margin-bottom: 6px;
+    margin-bottom: 24px;
     text-shadow: 0 0 8px rgb(0, 0, 0);
 }
 
 .menu-root .card-content {
-    margin-bottom: 6px;
-}
-
-/* ---- Inputs (border-2 bg-black/50 p-2 text-base) ---- */
-
-.menu-root .menu-input {
-    margin: 0 0 16px 0;
-    padding: 0;
-    --unity-cursor-color: rgb(255, 255, 255);
-    --unity-selection-color: rgba(255, 255, 255, 0.35);
-}
-
-.menu-root .menu-input--room {
-    margin-bottom: 0;
-}
-
-.menu-root .menu-input .unity-base-text-field__input {
-    margin: 0;
-    padding: 8px;
-    min-height: 44px;
-    border-width: 2px;
-    border-radius: 0;
-    border-color: rgb(255, 255, 255);
-    background-color: rgba(0, 0, 0, 0.5);
-    font-size: 16px;
-    -unity-text-align: middle-left;
-}
-
-.menu-root .menu-input .unity-text-element {
-    font-size: 16px;
-    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+    width: 100%;
+    align-items: center;
 }
 
 /* text-red-400 */
 .menu-root .card-error {
-    margin-top: 16px;
-    font-size: 16px;
+    margin-bottom: 14px;
+    font-size: 18px;
     color: rgb(248, 113, 113);
     -unity-text-align: middle-center;
     white-space: normal;
-    text-shadow: 0 0 6px rgb(0, 0, 0);
+    text-shadow: 0 0 8px rgb(0, 0, 0);
 }
 
-/* ---- Button (h-10 px-4 py-2 border-2 text-xs font-semibold tracking-widest) ---- */
+/* ---- Buttons ---- */
 
 .menu-root .card-footer {
+    width: 100%;
     flex-direction: row;
     justify-content: center;
+    align-items: center;
+}
+
+.menu-root .card-footer--lobby {
+    justify-content: space-between;
+    margin-top: 4px;
 }
 
 .menu-root .menu-button.unity-button {
-    height: 40px;
+    min-width: 220px;
+    height: 52px;
     margin: 0;
-    padding: 8px 16px;
+    padding: 8px 30px;
     border-width: 2px;
     border-radius: 0;
     border-color: rgb(255, 255, 255);
-    background-color: rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0.45);
     color: rgb(255, 255, 255);
-    font-size: 12px;
+    font-size: 24px;
     -unity-font-style: bold;
-    letter-spacing: 1.2px;
+    letter-spacing: 2.4px;
     -unity-text-align: middle-center;
     -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.menu-root .menu-button--secondary.unity-button {
+    min-width: 140px;
+    height: 46px;
+    padding: 6px 20px;
+    font-size: 20px;
+    letter-spacing: 1.8px;
+}
+
+.menu-root .card--lobby .menu-button--primary.unity-button {
+    min-width: 220px;
+    height: 46px;
+    padding: 6px 24px;
+    font-size: 22px;
+}
+
+.menu-root .lobby-test-row {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.menu-root .menu-button--test.unity-button {
+    min-width: 140px;
+    height: 36px;
+    margin: 0 6px;
+    padding: 4px 14px;
+    font-size: 16px;
+    letter-spacing: 1.5px;
+}
+
+/* ---- Host Lobby Center Join Card ---- */
+
+.menu-root .lobby-header-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.menu-root .lobby-title {
+    font-size: 26px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    -unity-text-align: middle-left;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
+}
+
+.menu-root .lobby-count-badge {
+    padding: 4px 12px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.55);
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-root .lobby-count-text {
+    font-size: 18px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    white-space: nowrap;
+}
+
+.menu-root .lobby-code-box {
+    width: 100%;
+    padding: 12px 24px 14px 24px;
+    margin-bottom: 12px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.65);
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-root .lobby-code-label {
+    font-size: 16px;
+    letter-spacing: 2.8px;
+    padding-left: 2.8px;
+    -unity-text-align: middle-center;
+    margin-bottom: 2px;
+}
+
+.menu-root .lobby-code-value {
+    font-size: 64px;
+    -unity-font-style: bold;
+    letter-spacing: 10px;
+    padding-left: 10px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 18px rgb(0, 0, 0);
+}
+
+.menu-root .lobby-description {
+    font-size: 19px;
+    margin-bottom: 16px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 0 8px rgb(0, 0, 0);
 }
