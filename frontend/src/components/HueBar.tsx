@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 
 // full-saturation, full-brightness color for a hue: hueToHex(120) === '#00ff00'
 // white 0–1 mixes it toward white: hueToHex(0, 1) === '#ffffff'
@@ -25,46 +25,95 @@ const clamp01 = (n: number) => Math.min(Math.max(n, 0), 1)
 
 type Props = {
   value: number | null // position 0–1 along the bar, null = nothing picked yet
-  onChange: (pos: number) => void
+  onChange: (pos: number | null) => void
 }
 
-// solid block of the current color; click it to reveal the gradient, then click/drag to pick
+// solid block of the current color; click once to open & snap without holding,
+// click/drag again to confirm, or click outside / press Escape to cancel
 export function HueBar({ value, onChange }: Props) {
   const [open, setOpen] = useState(false)
+  const barRef = useRef<HTMLDivElement>(null)
   const picking = useRef(false)
+  const openedOnPress = useRef(false)
+  const dragged = useRef(false)
+  const startX = useRef(0)
+  const prevValue = useRef<number | null>(value)
 
   const posAt = (e: PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect()
     return clamp01((e.clientX - r.left) / r.width)
   }
 
+  useEffect(() => {
+    if (!open) return
+
+    const onOutsidePointerDown = (e: globalThis.PointerEvent) => {
+      if (barRef.current?.contains(e.target as Node)) return
+      picking.current = false
+      onChange(prevValue.current)
+      setOpen(false)
+    }
+
+    const onWindowKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      picking.current = false
+      onChange(prevValue.current)
+      setOpen(false)
+    }
+
+    window.addEventListener('pointerdown', onOutsidePointerDown, true)
+    window.addEventListener('keydown', onWindowKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onOutsidePointerDown, true)
+      window.removeEventListener('keydown', onWindowKeyDown)
+    }
+  }, [open, onChange])
+
   return (
     <div
+      ref={barRef}
       role="slider"
       aria-label="Color"
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={value === null ? undefined : Math.round(value * 100)}
       tabIndex={0}
-      className="relative h-8 sm:h-3 w-full cursor-pointer touch-none border-2 border-(--hue)"
+      draggable={false}
+      className="relative h-12 sm:h-3 w-full cursor-pointer select-none touch-none [-webkit-touch-callout:none] border-2 border-(--hue)"
       style={{ background: open ? BAR : value === null ? '#ffffff' : colorAt(value) }}
+      onDragStart={(e) => e.preventDefault()}
       onPointerDown={(e) => {
-        if (!open) return setOpen(true) // first click only reveals the gradient
+        e.preventDefault()
+        if (!open) {
+          prevValue.current = value
+          openedOnPress.current = true
+          setOpen(true)
+        } else {
+          openedOnPress.current = false
+        }
+        dragged.current = false
+        startX.current = e.clientX
         picking.current = true
         e.currentTarget.setPointerCapture(e.pointerId)
         onChange(posAt(e))
       }}
       onPointerMove={(e) => {
-        if (picking.current) onChange(posAt(e))
+        if (!picking.current) return
+        if (Math.abs(e.clientX - startX.current) > 4) dragged.current = true
+        onChange(posAt(e))
       }}
       onPointerUp={() => {
         if (!picking.current) return
         picking.current = false
+        if (openedOnPress.current && !dragged.current) {
+          // single click/tap opened & snapped — keep open until user picks or clicks outside
+          openedOnPress.current = false
+          return
+        }
         setOpen(false)
       }}
-      onPointerLeave={(e) => {
-        // touch fires pointerleave right after every tap, which would close the bar before you can pick
-        if (e.pointerType === 'mouse' && !picking.current) setOpen(false)
+      onPointerCancel={() => {
+        picking.current = false
       }}
       onKeyDown={(e) => {
         const step = { ArrowRight: 0.02, ArrowUp: 0.02, ArrowLeft: -0.02, ArrowDown: -0.02 }[e.key]
@@ -75,7 +124,7 @@ export function HueBar({ value, onChange }: Props) {
     >
       {open && value !== null && (
         <div
-          className="pointer-events-none absolute inset-y-0 w-1 -translate-x-1/2 bg-white shadow-[0_0_4px_black]"
+          className="pointer-events-none border-2 rounded-sm absolute inset-y-0 w-4 -translate-x-1/2 bg-white shadow-[0_0_4px_black]"
           style={{ left: `${value * 100}%` }}
         />
       )}

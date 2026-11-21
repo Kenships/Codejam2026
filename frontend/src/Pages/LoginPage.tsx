@@ -29,13 +29,13 @@ export function LoginPage() {
 
                 />
             </div>
-            <div className="relative flex flex-col gap-2 w-full max-w-[400px]">
+            <div className="relative flex flex-col gap-2 w-full max-w-100">
                 <div className="flex flex-col gap-5">
-                    <div className="flex flex-col ">
-                        <h1 className="font-heading text-4xl sm:text-6xl font-semibold tracking-wider  uppercase text-center text-(--hue)">HueSlider</h1>
-                        <p className=" font-heading text-center text-(--hue)">Pick a color for your game</p>
+                    <div className="flex flex-col select-none">
+                        <h1 className="font-jersey text-6xl sm:text-8xl font-semibold tracking-wider uppercase text-center text-(--hue) [text-shadow:0_0_10px_#000,0_0_20px_#000,0_0_32px_#000]">HueSlider</h1>
+                        <p className=" font-jersey text-2xl text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000,0_0_24px_#000]">Find the hue that matches the room</p>
                     </div>
-                    <HueBar value={pos} onChange={setPos} />
+                    <HueBar value={pos} onChange={setPos}  />
 
                     <LoginCard />
                 </div>
