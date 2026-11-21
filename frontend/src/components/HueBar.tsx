@@ -46,7 +46,7 @@ export function HueBar({ value, onChange }: Props) {
       aria-valuemax={100}
       aria-valuenow={value === null ? undefined : Math.round(value * 100)}
       tabIndex={0}
-      className="relative h-3 w-full cursor-pointer touch-none border-2 border-(--hue)"
+      className="relative h-8 sm:h-3 w-full cursor-pointer touch-none border-2 border-(--hue)"
       style={{ background: open ? BAR : value === null ? '#ffffff' : colorAt(value) }}
       onPointerDown={(e) => {
         if (!open) return setOpen(true) // first click only reveals the gradient
@@ -62,8 +62,9 @@ export function HueBar({ value, onChange }: Props) {
         picking.current = false
         setOpen(false)
       }}
-      onPointerLeave={() => {
-        if (!picking.current) setOpen(false)
+      onPointerLeave={(e) => {
+        // touch fires pointerleave right after every tap, which would close the bar before you can pick
+        if (e.pointerType === 'mouse' && !picking.current) setOpen(false)
       }}
       onKeyDown={(e) => {
         const step = { ArrowRight: 0.02, ArrowUp: 0.02, ArrowLeft: -0.02, ArrowDown: -0.02 }[e.key]
