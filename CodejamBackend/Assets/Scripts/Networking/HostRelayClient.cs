@@ -211,29 +211,53 @@ namespace Codejam.Networking
                     if (p == null || string.IsNullOrEmpty(p.playerId) || !IsRelayPlayer(p.playerId))
                         continue;
 
-                    string hex = "#" + ColorUtility.ToHtmlStringRGB(p.secretTargetColor);
-                    SendToTarget(p.playerId, new JObject
-                    {
-                        ["t"] = "your_target",
-                        ["hex"] = hex
-                    });
+                    SendTargetTo(p);
                 }
             }
 
             BroadcastPhaseState("drawing", round, remainingMs);
         }
 
-        /// <summary>Broadcasts a phase/state update to all connected players.</summary>
-        public void BroadcastPhaseState(string phase, int round, int remainingMs)
+        /// <summary>
+        /// Puts one (re)connected player into the drawing phase: their secret target, then the
+        /// drawing state. Used to resync a phone that reconnects mid-drawing.
+        /// </summary>
+        public void SendDrawingPhaseTo(GameSessionData.SessionPlayer player, int round, int remainingMs)
         {
-            SendToTarget("players", new JObject
+            if (player == null || !IsRelayPlayer(player.playerId))
+                return;
+
+            SendTargetTo(player);
+            SendPhaseStateTo(player.playerId, "drawing", round, remainingMs);
+        }
+
+        private void SendTargetTo(GameSessionData.SessionPlayer player)
+        {
+            SendToTarget(player.playerId, new JObject
             {
-                ["t"] = "state",
-                ["phase"] = phase,
-                ["round"] = round,
-                ["remainingMs"] = remainingMs
+                ["t"] = "your_target",
+                ["hex"] = "#" + ColorUtility.ToHtmlStringRGB(player.secretTargetColor)
             });
         }
+
+        /// <summary>Broadcasts a phase/state update to all connected players.</summary>
+        public void BroadcastPhaseState(string phase, int round, int remainingMs) =>
+            SendToTarget("players", StateMessage(phase, round, remainingMs));
+
+        /// <summary>A phase/state update for one player.</summary>
+        public void SendPhaseStateTo(string playerId, string phase, int round, int remainingMs)
+        {
+            if (IsRelayPlayer(playerId))
+                SendToTarget(playerId, StateMessage(phase, round, remainingMs));
+        }
+
+        private static JObject StateMessage(string phase, int round, int remainingMs) => new JObject
+        {
+            ["t"] = "state",
+            ["phase"] = phase,
+            ["round"] = round,
+            ["remainingMs"] = remainingMs
+        };
 
         /// <summary>
         /// Broadcasts the current artist's black-and-white drawing to players so they can guess its hue.
@@ -246,18 +270,61 @@ namespace Codejam.Networking
             if (!IsInRoom || drawing == null)
                 return;
 
-            // The phone recognises gzip by its header, so the submitted image goes back out as-is
-            SendToTarget("players", new JObject
-            {
-                ["t"] = "round_drawing",
-                ["image"] = drawing.imageBase64 ?? "",
-                ["mime"] = string.IsNullOrEmpty(drawing.mime) ? "image/png" : drawing.mime,
-                ["prompt"] = drawing.prompt ?? "",
-                ["artistName"] = drawing.playerName ?? ""
-            });
-
+            SendToTarget("players", RoundDrawingMessage(drawing));
             BroadcastPhaseState("playing", round, remainingMs);
         }
+
+        /// <summary>
+        /// Sends the drawing to guess to every player in the game EXCEPT its artist, who would
+        /// otherwise be asked to guess their own colour. The artist's phone stays on its
+        /// current screen until the results.
+        /// </summary>
+        public void BroadcastRoundDrawing(
+            GameSessionData.SubmittedDrawing drawing,
+            int round,
+            int remainingMs,
+            IReadOnlyList<GameSessionData.SessionPlayer> players)
+        {
+            if (!IsInRoom || drawing == null)
+                return;
+
+            if (players == null)
+            {
+                BroadcastRoundDrawing(drawing, round, remainingMs);
+                return;
+            }
+
+            for (int i = 0; i < players.Count; i++)
+            {
+                GameSessionData.SessionPlayer p = players[i];
+                if (p != null && p.playerId != drawing.playerId)
+                    SendRoundDrawingTo(p.playerId, drawing, round, remainingMs);
+            }
+        }
+
+        /// <summary>One player's guessing screen: the drawing, then the playing state.</summary>
+        public void SendRoundDrawingTo(
+            string playerId,
+            GameSessionData.SubmittedDrawing drawing,
+            int round,
+            int remainingMs)
+        {
+            if (drawing == null || !IsRelayPlayer(playerId))
+                return;
+
+            SendToTarget(playerId, RoundDrawingMessage(drawing));
+            SendPhaseStateTo(playerId, "playing", round, remainingMs);
+        }
+
+        // The phone recognises gzip by its header, so the submitted image goes back out as-is
+        private static JObject RoundDrawingMessage(GameSessionData.SubmittedDrawing drawing) => new JObject
+        {
+            ["t"] = "round_drawing",
+            ["image"] = drawing.imageBase64 ?? "",
+            ["mime"] = string.IsNullOrEmpty(drawing.mime) ? "image/png" : drawing.mime,
+            ["prompt"] = drawing.prompt ?? "",
+            ["artistName"] = drawing.playerName ?? ""
+        };
 
         /// <summary>
         /// Sends one player their results screen (the phone needs this; state "results"
@@ -306,10 +373,10 @@ namespace Codejam.Networking
         }
 
         /// <summary>
-        /// False for ids the relay doesn't know (e.g. the menu's simulated players), which
-        /// the relay would reject with unknown_target.
+        /// True for real phones in the room. False for ids the relay doesn't know (e.g. the
+        /// menu's simulated players), which the relay would reject with unknown_target.
         /// </summary>
-        private bool IsRelayPlayer(string playerId) =>
+        public bool IsRelayPlayer(string playerId) =>
             _relay != null && !string.IsNullOrEmpty(playerId) && _relay.Players.ContainsKey(playerId);
 
         #endregion

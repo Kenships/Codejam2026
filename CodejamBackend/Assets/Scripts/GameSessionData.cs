@@ -17,6 +17,12 @@ public static class GameSessionData
         public Color color = Color.cyan;
         public Texture2D avatar;
         public Color secretTargetColor;
+
+        /// <summary>Points across every drawing so far this game (see HueScoring).</summary>
+        public int totalPoints;
+
+        /// <summary>Consecutive close guesses (ΔE ≤ 10), for the streak bonus.</summary>
+        public int streak;
     }
 
     [Serializable]

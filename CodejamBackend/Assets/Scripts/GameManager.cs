@@ -34,6 +34,11 @@ public class GameManager : Singleton<GameManager>
     [Tooltip("Seconds players have to draw and submit (matches DrawingCanvasCard default of 60s).")]
     [SerializeField, Min(5f)] private float drawingDurationSeconds = 60f;
 
+    [Tooltip("Extra seconds the drawing phase stays open after the timer, for phones still uploading. " +
+             "Each phone runs its own 60 s timer that starts when the drawing phase reaches it, so its " +
+             "auto-submit lands a little after ours. Ends early once everyone has submitted.")]
+    [SerializeField, Min(0f)] private float lateSubmitGraceSeconds = 5f;
+
     [Tooltip("Seconds players have to guess each drawing's hue.")]
     [SerializeField, Min(5f)] private float guessingDurationSeconds = 30f;
 
@@ -78,6 +83,11 @@ public class GameManager : Singleton<GameManager>
     private RevealUI _revealUI;
     private readonly HashSet<string> _submittedDrawingPlayerIds = new();
     private readonly Dictionary<string, Color> _currentRoundGuesses = new();
+    // Points each player earned on the current drawing (guessers, and the artist at reveal)
+    private readonly Dictionary<string, int> _currentRoundPoints = new();
+    private float _guessingStartedAt;
+    // When the current drawing/guessing countdown ends (Time.time), for resyncing phones
+    private float _phaseEndsAt;
 
     private GamePhase _currentPhase = GamePhase.None;
     private int _currentRound = 1;
@@ -164,6 +174,7 @@ public class GameManager : Singleton<GameManager>
         _currentDrawingIndex = 0;
 
         SetPhase(GamePhase.Drawing);
+        _phaseEndsAt = Time.time + drawingDurationSeconds;
 
         if (drawingPhaseUI != null)
             drawingPhaseUI.BeginDrawingRound(GameSessionData.Players.Count, drawingDurationSeconds);
@@ -213,11 +224,13 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
 
-        // Ensure every player has a drawing entry (using stand-in drawing if timer expired before submit)
+        // Simulated players who didn't submit get a stand-in drawing so offline testing still
+        // has something to guess. Real phones that didn't submit (left, or never pressed
+        // submit) are skipped: a blank drawing would be impossible to guess.
         for (int i = 0; i < GameSessionData.Players.Count; i++)
         {
             GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (!_submittedDrawingPlayerIds.Contains(p.playerId))
+            if (!_submittedDrawingPlayerIds.Contains(p.playerId) && IsSimulatedPlayer(p.playerId))
             {
                 _submittedDrawingPlayerIds.Add(p.playerId);
                 GameSessionData.Drawings.Add(new GameSessionData.SubmittedDrawing
@@ -248,7 +261,7 @@ public class GameManager : Singleton<GameManager>
         {
             drawingPhaseUI?.SetRemainingSeconds(remaining);
 
-            if (_submittedDrawingPlayerIds.Count >= GameSessionData.Players.Count && GameSessionData.Players.Count > 0)
+            if (HaveAllDrawings())
             {
                 if (allSubmittedAdvanceDelay > 0f)
                     yield return new WaitForSeconds(allSubmittedAdvanceDelay);
@@ -261,12 +274,27 @@ public class GameManager : Singleton<GameManager>
             yield return null;
         }
 
-        if (_currentPhase == GamePhase.Drawing)
+        // Grace period: keep accepting drawings from phones whose own timer ended a moment
+        // after ours (it starts when the drawing phase reaches the phone) or that are still
+        // uploading. Ends as soon as everyone is in.
+        drawingPhaseUI?.SetRemainingSeconds(0f);
+        float grace = lateSubmitGraceSeconds;
+        while (grace > 0f && _currentPhase == GamePhase.Drawing && !HaveAllDrawings())
         {
-            drawingPhaseUI?.SetRemainingSeconds(0f);
-            CompleteDrawingPhase();
+            grace -= Time.deltaTime;
+            yield return null;
         }
+
+        if (_currentPhase == GamePhase.Drawing)
+            CompleteDrawingPhase();
     }
+
+    private bool HaveAllDrawings() =>
+        GameSessionData.Players.Count > 0 && _submittedDrawingPlayerIds.Count >= GameSessionData.Players.Count;
+
+    /// <summary>The menu's and GameScene's offline test players (not real phones).</summary>
+    private static bool IsSimulatedPlayer(string playerId) =>
+        playerId != null && (playerId.StartsWith("p_sim_") || playerId.StartsWith("p_test_"));
 
     private void OnRelayDrawingSubmitted(string playerId, DrawingSubmitPayload payload, Texture2D drawingTexture)
     {
@@ -379,10 +407,13 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
         _currentRoundGuesses.Clear();
+        _currentRoundPoints.Clear();
         colorPhysics?.ClearAllBodies();
 
         GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
         GameSessionData.SessionPlayer artist = GameSessionData.FindPlayer(currentDrawing.playerId);
+        _guessingStartedAt = Time.time;
+        _phaseEndsAt = Time.time + guessingDurationSeconds;
 
         int expectedGuessers = GetExpectedGuesserCount(currentDrawing.playerId);
 
@@ -402,10 +433,12 @@ public class GameManager : Singleton<GameManager>
 
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
         {
+            // Everyone except the artist (who'd be guessing their own colour)
             HostRelayClient.Instance.BroadcastRoundDrawing(
                 currentDrawing,
                 _currentDrawingIndex + 1,
-                Mathf.RoundToInt(guessingDurationSeconds * 1000f)
+                Mathf.RoundToInt(guessingDurationSeconds * 1000f),
+                GameSessionData.Players
             );
         }
 
@@ -493,7 +526,17 @@ public class GameManager : Singleton<GameManager>
         if (playerId == currentDrawing.playerId || _currentRoundGuesses.ContainsKey(playerId))
             return;
 
+        // Only players in this game can guess (not phones that joined after Start Match)
+        GameSessionData.SessionPlayer guesser = GameSessionData.FindPlayer(playerId);
+        if (guesser == null)
+            return;
+
         _currentRoundGuesses[playerId] = guessedColor;
+
+        double deltaE = HueScoring.DeltaE2000(guessedColor, currentDrawing.targetColor);
+        guesser.streak = HueScoring.UpdateStreak(guesser.streak, deltaE);
+        _currentRoundPoints[playerId] = HueScoring.GuessPoints(
+            deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
 
         int expectedGuessers = GetExpectedGuesserCount(currentDrawing.playerId);
         SpawnGuessedColorCubes(guessedColor, expectedGuessers);
@@ -580,8 +623,12 @@ public class GameManager : Singleton<GameManager>
         if (guessedColors.Count == 0)
             guessedColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
 
+        ScoreCurrentDrawing(currentDrawing);
+
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
         {
+            // Each phone's own results first (its results screen needs them), then the phase
+            SendResultsToPlayers(currentDrawing);
             HostRelayClient.Instance.BroadcastPhaseState("results", _currentDrawingIndex + 1, Mathf.RoundToInt(revealDurationSeconds * 1000f));
         }
 
@@ -839,11 +886,145 @@ public class GameManager : Singleton<GameManager>
 
         HostRelayClient.Instance.DrawingSubmitted -= OnRelayDrawingSubmitted;
         HostRelayClient.Instance.GuessSubmitted -= OnRelayGuessSubmitted;
+        HostRelayClient.Instance.PlayerRejoined -= OnRelayPlayerRejoined;
 
         if (subscribe)
         {
             HostRelayClient.Instance.DrawingSubmitted += OnRelayDrawingSubmitted;
             HostRelayClient.Instance.GuessSubmitted += OnRelayGuessSubmitted;
+            HostRelayClient.Instance.PlayerRejoined += OnRelayPlayerRejoined;
+        }
+    }
+
+    #endregion
+
+    #region Scoring & Results
+
+    /// <summary>
+    /// Finishes the current drawing's scores: guessers who didn't guess get 0 (and lose their
+    /// streak), the artist gets the average of the guessers' points, and everyone's
+    /// totalPoints is updated.
+    /// </summary>
+    private void ScoreCurrentDrawing(GameSessionData.SubmittedDrawing drawing)
+    {
+        string artistId = drawing.playerId;
+        int sum = 0;
+        int guessers = 0;
+
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
+            if (p.playerId == artistId)
+                continue;
+
+            if (_currentRoundPoints.TryGetValue(p.playerId, out int points))
+            {
+                sum += points;
+                guessers++;
+            }
+            else
+            {
+                p.streak = 0;
+                _currentRoundPoints[p.playerId] = 0;
+            }
+        }
+
+        // The artist earns the average of the players who actually guessed their drawing,
+        // so a clear drawing pays off and a troll drawing doesn't
+        _currentRoundPoints[artistId] = guessers > 0 ? Mathf.RoundToInt((float)sum / guessers) : 0;
+
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
+            if (_currentRoundPoints.TryGetValue(p.playerId, out int points))
+                p.totalPoints += points;
+        }
+
+        Debug.Log($"[GameManager] Scores for {drawing.playerName}'s drawing: {DescribeScores()}");
+    }
+
+    /// <summary>Sends every phone in the game its own results screen for the current drawing.</summary>
+    private void SendResultsToPlayers(GameSessionData.SubmittedDrawing drawing)
+    {
+        HostRelayClient relay = HostRelayClient.Instance;
+        int count = GameSessionData.Players.Count;
+
+        for (int i = 0; i < count; i++)
+        {
+            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
+            int roundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0;
+
+            relay.SendResults(
+                p.playerId,
+                drawing.targetColor,
+                roundPoints,
+                p.totalPoints,
+                RankBy(roundPoints, other => _currentRoundPoints.TryGetValue(other.playerId, out int o) ? o : 0),
+                RankBy(p.totalPoints, other => other.totalPoints),
+                count);
+        }
+    }
+
+    /// <summary>1 + how many players scored strictly more (ties share a rank).</summary>
+    private static int RankBy(int score, Func<GameSessionData.SessionPlayer, int> scoreOf)
+    {
+        int rank = 1;
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            if (scoreOf(GameSessionData.Players[i]) > score)
+                rank++;
+        }
+        return rank;
+    }
+
+    private string DescribeScores()
+    {
+        List<string> parts = new();
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
+            int round = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0;
+            parts.Add($"{p.name} +{round} (total {p.totalPoints})");
+        }
+        return string.Join(", ", parts);
+    }
+
+    #endregion
+
+    #region Reconnect Resync
+
+    /// <summary>
+    /// A phone reconnected mid-game. Its screen may be stale (it missed messages while it
+    /// was away), so send it what it needs for the current phase.
+    /// </summary>
+    private void OnRelayPlayerRejoined(string playerId, string name)
+    {
+        HostRelayClient relay = HostRelayClient.Instance;
+        GameSessionData.SessionPlayer player = GameSessionData.FindPlayer(playerId);
+        if (relay == null || !relay.IsInRoom || player == null)
+            return;
+
+        int remainingMs = Mathf.Max(0, Mathf.RoundToInt((_phaseEndsAt - Time.time) * 1000f));
+
+        switch (_currentPhase)
+        {
+            case GamePhase.Drawing:
+                if (!_submittedDrawingPlayerIds.Contains(playerId))
+                    relay.SendDrawingPhaseTo(player, _currentRound, remainingMs);
+                break;
+
+            case GamePhase.Guessing:
+                if (_currentDrawingIndex < GameSessionData.Drawings.Count)
+                {
+                    GameSessionData.SubmittedDrawing drawing = GameSessionData.Drawings[_currentDrawingIndex];
+                    if (drawing.playerId != playerId && !_currentRoundGuesses.ContainsKey(playerId))
+                        relay.SendRoundDrawingTo(playerId, drawing, _currentDrawingIndex + 1, remainingMs);
+                }
+                break;
+
+            case GamePhase.Finished:
+                relay.SendPhaseStateTo(playerId, "finished", _currentRound, 0);
+                break;
         }
     }
 
