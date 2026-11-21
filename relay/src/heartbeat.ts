@@ -1,4 +1,5 @@
 import { WebSocket, type WebSocketServer } from "ws";
+import { log } from "./log.ts";
 
 /**
  * Detect sockets that died without saying goodbye (phone out of signal,
@@ -30,6 +31,7 @@ export function startHeartbeat(wss: WebSocketServer, intervalMs: number): () => 
             if (ws.readyState !== WebSocket.OPEN) continue;
 
             if (answered.get(ws) === false) {
+                log.debug("heartbeat: no pong, terminating socket");
                 ws.terminate(); // no reply since last tick: treat as dead
                 continue;
             }

@@ -1,12 +1,13 @@
 import { config } from "./config.ts";
 import { startRelay } from "./server.ts";
+import { log } from "./log.ts";
 
 const relay = await startRelay({ port: config.port });
-console.log(`Listening on port ${relay.port}`);
+log.info("relay listening", { port: relay.port, logLevel: config.logLevel });
 if (config.allowedOrigins.length === 0) {
-    console.warn("ALLOWED_ORIGINS is not set: accepting browser connections from any website.");
+    log.warn("ALLOWED_ORIGINS is not set: accepting browser connections from any website");
 } else {
-    console.log(`Allowed origins: ${config.allowedOrigins.join(", ")}`);
+    log.info("allowed origins", { origins: config.allowedOrigins.join(",") });
 }
 
 // Railway sends SIGTERM before stopping or redeploying the relay; Ctrl+C sends SIGINT.
@@ -16,7 +17,7 @@ let shuttingDown = false;
 async function shutdown(signal: string) {
     if (shuttingDown) return; // a second Ctrl+C while we're already closing
     shuttingDown = true;
-    console.log(`${signal} received: closing ${relay.rooms.size} room(s)`);
+    log.info("shutting down", { signal, rooms: relay.rooms.size });
     await relay.shutdown();
     process.exit(0);
 }

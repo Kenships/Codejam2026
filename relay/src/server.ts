@@ -6,6 +6,7 @@ import { Rooms } from "./rooms.ts";
 import { handleConnection } from "./connection.ts";
 import { startHeartbeat } from "./heartbeat.ts";
 import { isOriginAllowed } from "./origin.ts";
+import { log } from "./log.ts";
 
 export type Relay = {
     /** The port actually bound (useful when you asked for port 0). */
@@ -60,6 +61,7 @@ export function startRelay(options: RelayOptions): Promise<Relay> {
     server.on("upgrade", (req, socket, head) => {
         wss.handleUpgrade(req, socket, head, (ws) => {
             if (!isOriginAllowed(req.headers.origin, allowedOrigins)) {
+                log.warn("origin rejected", { origin: req.headers.origin });
                 // Finish the handshake, then close with a code + reason the
                 // browser's onclose can show. A refused handshake (HTTP 403)
                 // would only surface in the browser as a generic error.

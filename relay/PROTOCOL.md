@@ -1,4 +1,4 @@
-# Hex & Canvas Relay Protocol
+# HueSlider Relay Protocol
 
 **Version:** 1
 **Audience:** anyone writing a client for the relay (Unity host, React phone app) or changing the relay itself.

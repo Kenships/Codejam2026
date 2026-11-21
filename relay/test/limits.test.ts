@@ -19,11 +19,11 @@ afterEach(async () => {
 });
 
 describe("origin check", () => {
-    const allowedOrigins = ["https://hexcanvas.pages.dev"];
+    const allowedOrigins = ["https://hueslider.pages.dev"];
 
     test("an allowed browser origin connects and works", async () => {
         const { port } = await start({ allowedOrigins });
-        const c = await connect(port, { origin: "https://hexcanvas.pages.dev" });
+        const c = await connect(port, { origin: "https://hueslider.pages.dev" });
         c.send({ t: "host_create" });
         await c.expect("room_created");
     });

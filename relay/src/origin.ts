@@ -9,10 +9,10 @@
  * Rules:
  * - No Origin header            → allowed (Unity / NativeWebSocket, CLI tools)
  * - Empty allow-list            → allowed (local dev with ALLOWED_ORIGINS unset)
- * - Exact match                 → allowed, e.g. "https://hexcanvas.pages.dev"
- * - Wildcard subdomain entry    → "https://*.hexcanvas.pages.dev" allows
+ * - Exact match                 → allowed, e.g. "https://hueslider.pages.dev"
+ * - Wildcard subdomain entry    → "https://*.hueslider.pages.dev" allows
  *                                 Cloudflare Pages preview URLs like
- *                                 "https://a1b2c3.hexcanvas.pages.dev"
+ *                                 "https://a1b2c3.hueslider.pages.dev"
  */
 export function isOriginAllowed(origin: string | undefined, allowed: readonly string[]): boolean {
     if (origin === undefined) return true;

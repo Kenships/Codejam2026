@@ -1,6 +1,7 @@
 import { Room, type Conn } from "./room.ts";
 import { generateHostKey, generateRoomCode } from "./codes.ts";
 import type { RoomClosed } from "./protocol.ts";
+import { log } from "./log.ts";
 
 /** Every live room, keyed by its 4-letter code. */
 export class Rooms {
@@ -52,6 +53,7 @@ export class Rooms {
             conn.close(closeCode, reason);
         }
         this.rooms.delete(room.getCode());
+        log.info("room closed", { room: room.getCode(), reason, players: room.playerList().length, openRooms: this.rooms.size });
     }
 
     /** Close every room that has been silent for longer than idleMs. */

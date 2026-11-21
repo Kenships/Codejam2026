@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import WebSocket, { type ClientOptions } from "ws";
 import type { Conn } from "../src/room.ts";
 import type { ServerMessage } from "../src/protocol.ts";
+import { setLogLevel } from "../src/log.ts";
+
+// Keep test output clean. Comment out (or use "debug") to see relay logs while debugging a test.
+setLogLevel("silent");
 
 // ---------------------------------------------------------------------------
 // Fake connections (unit tests: no networking)
