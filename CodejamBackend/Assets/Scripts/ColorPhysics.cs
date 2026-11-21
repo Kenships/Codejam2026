@@ -1107,7 +1107,7 @@ public class ColorPhysics : MonoBehaviour
     /// Weighted HSV average. weightA/weightB are relative (e.g. areas);
     /// a larger weight pulls the result toward that colour.
     /// </summary>
-    private static Color AverageHSV(
+    public static Color AverageHSV(
         Color a,
         Color b,
         float weightA,
@@ -1300,15 +1300,31 @@ public class ColorPhysics : MonoBehaviour
     /// </summary>
     public ColorBody SpawnBody(Color color, float radius)
     {
+        ColorBody body = CreateBody(
+            color,
+            radius,
+            Random.onUnitCircle * spawnDistance
+        );
+
+        AddBody(body);
+
+        return body;
+    }
+
+    /// <summary>
+    /// Instantiates a ColorBody from the prefab without adding it to the
+    /// simulation (e.g. for display after the physics is done with it).
+    /// </summary>
+    public ColorBody CreateBody(Color color, float radius, Vector3 position)
+    {
         ColorBody body = Instantiate(
             colorBodyPrefab,
-            Random.onUnitCircle * spawnDistance,
+            position,
             Quaternion.identity
         );
 
         body.transform.localScale = Vector3.one * (Mathf.Max(0.001f, radius) * 2f);
         body.Color = color;
-        AddBody(body);
 
         return body;
     }

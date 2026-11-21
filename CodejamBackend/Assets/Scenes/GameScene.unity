@@ -169,23 +169,23 @@ MonoBehaviour:
   waveCount: 2
   waveSpacing: 3
   mergeSound: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
-  mergeSpeed: 1.5
-  mergeAlignSpeed: 540
+  mergeSpeed: 10
+  mergeAlignSpeed: 1000
   rotationReturnSpeed: 60
-  mergeApproachTimeout: 2
-  mergeRetryCooldown: 3
-  mergePressDuration: 0.4
+  mergeApproachTimeout: 1
+  mergeRetryCooldown: 1
+  mergePressDuration: 0.25
   mergeMaxSquash: 0.1
-  mergeMaxStretch: 1.05
+  mergeMaxStretch: 1.08
   mergeUnsquashDuration: 0.25
   mergeFuseOffset: 0.05
-  mergeOverlapTimeout: 1.5
+  mergeOverlapTimeout: 0.5
   mergeSpawnSquash: 0.1
-  mergeSpawnDuration: 0.35
+  mergeSpawnDuration: 0.15
   mergeSpawnOvershoot: 1
   spawnDistance: 5
   spawnInterval: 0.15
-  squashAllInterval: 0.25
+  squashAllInterval: 0.01
   squashAllGracePeriod: 2.5
 --- !u!4 &413268375
 Transform:
@@ -254,6 +254,17 @@ MonoBehaviour:
   minUnitArea: 0.6
   maxUnitArea: 1.5
   mergeDelay: 2
+  trueColor: {r: 1, g: 1, b: 1, a: 1}
+  revealCamera: {fileID: 0}
+  removeDelay: 1.5
+  revealDuration: 1
+  revealGap: 0.5
+  revealPadding: 1.25
+  growDuration: 0.5
+  growOvershoot: 1
+  colorBlendDuration: 1.5
+  colorBlendEase: 6
+  playEffectOnReveal: 1
   useSeed: 0
   seed: 0
 --- !u!4 &497188567
