@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "com.annulusgames.alchemy": "https://github.com/annulusgames/Alchemy.git?path=/Alchemy/Assets/Alchemy",
+    "com.endel.nativewebsocket": "https://github.com/endel/NativeWebSocket.git#upm-2",
     "com.kyrylokuzyk.primetween": "file:../Packages/com.kyrylokuzyk.primetween.tgz",
     "com.unity.2d.animation": "13.0.6",
     "com.unity.2d.aseprite": "3.0.2",
