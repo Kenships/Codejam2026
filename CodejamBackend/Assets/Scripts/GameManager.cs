@@ -34,6 +34,10 @@ public class GameManager : Singleton<GameManager>
     [Tooltip("When true, automatically runs the ColorPhysics spawn-and-merge sequence after Drawing ends.")]
     [SerializeField] private bool autoStartMergeAfterDrawing = true;
 
+    // Plays the true colour reveal at the end. Falls back to (or adds) one
+    // on this GameObject if left empty.
+    [SerializeField] private RevealController revealController;
+
     [Title("Colors")]
     // Number of distinct colours (one per person, also used for sample players when testing GameScene directly)
     [SerializeField, Min(1)] private int colorCount = 4;
@@ -52,6 +56,13 @@ public class GameManager : Singleton<GameManager>
     [Title("Sequence")]
     // Pause after the last body spawns before everything starts merging
     [SerializeField, Min(0f)] private float mergeDelay = 2f;
+
+    [Title("True Color")]
+    // The colour the merged result is compared against (used by the button)
+    [SerializeField] private Color trueColor = Color.white;
+
+    // Pause after the last merge before the final body leaves the physics
+    [SerializeField, Range(1f, 2f)] private float removeDelay = 1.5f;
 
     [Title("Randomness")]
     // Use a fixed seed to get the same colours and pieces every time
@@ -107,6 +118,28 @@ public class GameManager : Singleton<GameManager>
     }
 
     #region Phase Control
+
+    public RevealController Reveal => revealController;
+
+    protected override void Awake()
+    {
+        base.Awake();
+
+        if (revealController != null)
+            return;
+
+        revealController = GetComponent<RevealController>();
+
+        if (revealController == null)
+        {
+            Debug.LogWarning("GameManager: no RevealController assigned; adding one with default settings. Add it in the scene to tune it.");
+            revealController = gameObject.AddComponent<RevealController>();
+        }
+    }
+
+    /// <summary>Runs the sequence with the Inspector's trueColor.</summary>
+    [Button]
+    public void GenerateAndSpawn() => GenerateAndSpawn(trueColor);
 
     /// <summary>
     /// Starts the Drawing Phase: hides physics visuals, shows the rainbow-shifting Drawing UI,
@@ -399,10 +432,10 @@ public class GameManager : Singleton<GameManager>
 
     /// <summary>
     /// Generates colorCount distinct colours, then runs the sequence:
-    /// spawn every partitioned piece, wait mergeDelay, merge them all.
+    /// spawn every partitioned piece, wait mergeDelay, merge them all,
+    /// then reveal the result next to trueColor.
     /// </summary>
-    [Button]
-    public void GenerateAndSpawn()
+    public void GenerateAndSpawn(Color trueColor)
     {
         if (!Application.isPlaying)
         {
@@ -439,11 +472,17 @@ public class GameManager : Singleton<GameManager>
         if (_sequenceRoutine != null)
             StopCoroutine(_sequenceRoutine);
 
-        _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(spawnQueue));
+        revealController.Clear();
+
+        _sequenceRoutine = StartCoroutine(
+            SpawnThenMergeRoutine(spawnQueue, colors, trueColor)
+        );
     }
 
-    private IEnumerator SpawnThenMergeRoutine(
-        Queue<(Color color, float radius)> spawnQueue)
+    private System.Collections.IEnumerator SpawnThenMergeRoutine(
+        Queue<(Color color, float radius)> spawnQueue,
+        IReadOnlyList<Color> guessedColors,
+        Color trueColor)
     {
         // 1. Spawn every piece at ColorPhysics' spawn rate
         colorPhysics.SpawnQueue(spawnQueue);
@@ -460,6 +499,12 @@ public class GameManager : Singleton<GameManager>
 
         while (colorPhysics.IsSquashing)
             yield return null;
+
+        // 4. Hold on the result
+        yield return new WaitForSeconds(removeDelay);
+
+        // 5. Take it out of the simulation and reveal the true colour
+        yield return revealController.RevealLast(guessedColors, trueColor);
 
         _sequenceRoutine = null;
     }

@@ -150,6 +150,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ColorPhysics
   colorBodyPrefab: {fileID: 6650895571670250742, guid: 8c5e038f6cbd47141abbe50c189bb3ff, type: 3}
+  bodySprite: {fileID: 0}
   initialBodies: []
   colorBodyGap: 0.1
   constraintIterations: 1
@@ -169,24 +170,35 @@ MonoBehaviour:
   waveCount: 2
   waveSpacing: 3
   mergeSound: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
-  mergeSpeed: 1.5
-  mergeAlignSpeed: 540
+  mergeSpeed: 10
+  mergeAlignSpeed: 1000
   rotationReturnSpeed: 60
-  mergeApproachTimeout: 2
-  mergeRetryCooldown: 3
-  mergePressDuration: 0.4
+  mergeApproachTimeout: 1
+  mergeRetryCooldown: 1
+  mergePressDuration: 0.25
   mergeMaxSquash: 0.1
-  mergeMaxStretch: 1.05
+  mergeMaxStretch: 1.08
   mergeUnsquashDuration: 0.25
   mergeFuseOffset: 0.05
-  mergeOverlapTimeout: 1.5
+  mergeOverlapTimeout: 0.5
   mergeSpawnSquash: 0.1
-  mergeSpawnDuration: 0.35
+  mergeSpawnDuration: 0.15
   mergeSpawnOvershoot: 1
   spawnDistance: 5
   spawnInterval: 0.15
-  squashAllInterval: 0.25
+  squashAllInterval: 0.01
   squashAllGracePeriod: 2.5
+  cubeSprite: {fileID: 0}
+  cubeCollapseDuration: 0.6
+  cubeCollapseCohesion: 0.25
+  cubeCenteringMultiplier: 4
+  cubePopStartScale: 0.2
+  cubePopDuration: 0.5
+  cubePopOvershoot: 3
+  cubeBurstDelay: 0.4
+  cubeBurstDuration: 0.2
+  cubeBurstScale: 1.4
+  cubeBurstSound: {fileID: 0}
 --- !u!4 &413268375
 Transform:
   m_ObjectHideFlags: 0
@@ -226,6 +238,7 @@ GameObject:
   m_Component:
   - component: {fileID: 497188567}
   - component: {fileID: 497188566}
+  - component: {fileID: 497188568}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -252,6 +265,7 @@ MonoBehaviour:
   drawingDurationSeconds: 60
   allSubmittedAdvanceDelay: 1.5
   autoStartMergeAfterDrawing: 1
+  revealController: {fileID: 497188568}
   colorCount: 4
   saturation: 1
   value: 1
@@ -259,8 +273,24 @@ MonoBehaviour:
   minUnitArea: 0.6
   maxUnitArea: 1.5
   mergeDelay: 2
+  trueColor: {r: 1, g: 1, b: 1, a: 1}
+  removeDelay: 1.5
   useSeed: 0
   seed: 0
+--- !u!114 &497188568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 497188565}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 593bd6234936bbf42988fcfb7717df53, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RevealController
+  colorPhysics: {fileID: 413268374}
+  revealCamera: {fileID: 519420031}
 --- !u!4 &497188567
 Transform:
   m_ObjectHideFlags: 0
@@ -697,6 +727,69 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1720000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1720000002}
+  - component: {fileID: 1720000003}
+  - component: {fileID: 1720000004}
+  m_Layer: 5
+  m_Name: Reveal UI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1720000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1720000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1720000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1720000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_PanelSettings: {fileID: 11400000, guid: 8ffe5ea8cb994741b7f95979113c0837, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: eb4cad4f4f16d79408f0340581462062, type: 3}
+  m_SortingOrder: 0
+--- !u!114 &1720000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1720000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0a8ff00e8725844eae029fae96953f2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RevealUI
+  document: {fileID: 1720000003}
+  revealController: {fileID: 497188568}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -708,3 +801,4 @@ SceneRoots:
   - {fileID: 497188567}
   - {fileID: 1700000004}
   - {fileID: 1700000012}
+  - {fileID: 1720000002}

@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="RevealUI.uss"/>
+    <ui:VisualElement name="reveal-root" picking-mode="Ignore" class="reveal-root">
+
+        <!-- Top band (RevealController.reservedTop) -->
+        <ui:VisualElement name="reveal-header" picking-mode="Ignore" class="reveal-header reveal-fade">
+            <ui:Label name="reveal-title" text="THE REVEAL" class="reveal-title"/>
+            <ui:Label name="reveal-subtitle" text="How close did the room get?" class="reveal-subtitle"/>
+        </ui:VisualElement>
+
+        <!-- Name tags that follow each body in world space -->
+        <ui:VisualElement name="reveal-tag-layer" picking-mode="Ignore" class="reveal-tag-layer">
+            <ui:VisualElement name="mixed-tag" picking-mode="Ignore" class="reveal-tag reveal-fade">
+                <ui:Label name="mixed-tag-title" text="THE ROOM'S MIX" class="reveal-tag-title"/>
+                <ui:Label name="mixed-tag-hex" text="#FFFFFF" class="reveal-tag-hex"/>
+            </ui:VisualElement>
+            <ui:VisualElement name="true-tag" picking-mode="Ignore" class="reveal-tag reveal-fade">
+                <ui:Label name="true-tag-title" text="TRUE COLOUR" class="reveal-tag-title"/>
+                <ui:Label name="true-tag-hex" text="#??????" class="reveal-tag-hex"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Bottom band (RevealController.reservedBottom) -->
+        <ui:VisualElement name="reveal-result" picking-mode="Ignore" class="reveal-result reveal-fade reveal-rise">
+            <ui:VisualElement name="reveal-card" class="reveal-card">
+                <ui:VisualElement name="match-box" class="reveal-match-box">
+                    <ui:Label name="match-label" text="MATCH" class="reveal-match-label"/>
+                    <ui:Label name="match-value" text="0%" class="reveal-match-value"/>
+                </ui:VisualElement>
+                <ui:VisualElement name="verdict-box" class="reveal-verdict-box">
+                    <ui:Label name="verdict" text="SO CLOSE!" class="reveal-verdict"/>
+                    <ui:Label name="guesses-label" text="WHAT WENT IN" class="reveal-guesses-label"/>
+                    <ui:VisualElement name="guesses" class="reveal-guesses"/>
+                </ui:VisualElement>
+                <ui:Button name="play-again" text="PLAY AGAIN" class="reveal-button"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

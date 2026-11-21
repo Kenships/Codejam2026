@@ -37,6 +37,12 @@ public class ColorBody: MonoBehaviour
 
     public SpriteRenderer Renderer => sr;
 
+    public Sprite Sprite
+    {
+        get => sr.sprite;
+        set => sr.sprite = value;
+    }
+
     public Vector3 LastPos { get; set; }
     public Vector3 CurrentPos { get; set; }
 
@@ -92,6 +98,45 @@ public class ColorBody: MonoBehaviour
 
         particleSystems.Clear(true);
         particleSystems.Play(true);
+    }
+
+    /// <summary>
+    /// Plays the merge effect unparented from this body, so it keeps going
+    /// after the body is destroyed (e.g. a burst). The effect cleans itself
+    /// up once its particles have finished, and this body no longer owns it.
+    /// </summary>
+    public void PlayDetachedEffect()
+    {
+        _effectPlayRequested = true;
+
+        if (particleSystems == null)
+            return;
+
+        ParticleSystem effect = particleSystems;
+        float lifetime = 0f;
+
+        foreach (ParticleSystem system in GetEffectSystems())
+        {
+            if (system == null)
+                continue;
+
+            ParticleSystem.MainModule main = system.main;
+            lifetime = Mathf.Max(
+                lifetime,
+                main.startDelay.constantMax + main.duration + main.startLifetime.constantMax
+            );
+        }
+
+        // Hand it over: later recolours/stops on this body leave it alone
+        particleSystems = null;
+        _effectSystems = null;
+
+        effect.transform.SetParent(null, true);
+        effect.Clear(true);
+        effect.Play(true);
+
+        // CFXR may destroy it first; destroying it again is harmless
+        Destroy(effect.gameObject, lifetime + 0.5f);
     }
 
     private void StopEffect()

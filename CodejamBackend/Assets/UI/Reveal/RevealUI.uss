@@ -1,0 +1,219 @@
+/* End-of-round reveal overlay (1920x1080 reference, same look as Menu.uss).
+   The bodies are world-space and framed by RevealController between its
+   reserved top and bottom bands, so this only draws in those bands and in
+   small tags under each body. Accent colours are set from RevealUI.cs. */
+
+.reveal-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    color: rgb(255, 255, 255);
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.reveal-root .unity-label {
+    margin: 0;
+    padding: 0;
+}
+
+/* ---- Show / hide ---- */
+
+.reveal-root .reveal-fade {
+    opacity: 0;
+    transition-property: opacity, translate;
+    transition-duration: 0.35s, 0.35s;
+    transition-timing-function: ease-out-cubic, ease-out-cubic;
+}
+
+.reveal-root .reveal-fade.is-shown {
+    opacity: 1;
+}
+
+.reveal-root .reveal-rise {
+    translate: 0 40px;
+}
+
+.reveal-root .reveal-rise.is-shown {
+    translate: 0 0;
+}
+
+/* ---- Header ---- */
+
+.reveal-root .reveal-header {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 16%;
+    align-items: center;
+    justify-content: center;
+}
+
+.reveal-root .reveal-title {
+    font-size: 84px;
+    -unity-font-style: bold;
+    letter-spacing: 4.2px;
+    padding-left: 4.2px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 24px rgb(0, 0, 0);
+}
+
+.reveal-root .reveal-subtitle {
+    font-size: 24px;
+    letter-spacing: 0.8px;
+    -unity-text-align: middle-center;
+    color: rgba(255, 255, 255, 0.78);
+    text-shadow: 0 0 14px rgb(0, 0, 0);
+}
+
+/* ---- Body tags ---- */
+
+.reveal-root .reveal-tag-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+/* left/top are set every frame to the bottom of the body */
+.reveal-root .reveal-tag {
+    position: absolute;
+    translate: -50% 0;
+    margin-top: 14px;
+    padding: 4px 16px 6px 16px;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.78);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+}
+
+.reveal-root .reveal-tag-title {
+    font-size: 18px;
+    letter-spacing: 2.4px;
+    padding-left: 2.4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.reveal-root .reveal-tag-hex {
+    font-size: 30px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    padding-left: 2px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+/* ---- Result card ---- */
+
+.reveal-root .reveal-result {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 32%;
+    padding-bottom: 36px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.reveal-root .reveal-card {
+    flex-direction: row;
+    align-items: center;
+    padding: 16px 28px;
+    background-color: rgba(0, 0, 0, 0.82);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+}
+
+.reveal-root .reveal-match-box {
+    min-width: 200px;
+    align-items: center;
+    padding-right: 28px;
+    margin-right: 28px;
+    border-right-width: 2px;
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.reveal-root .reveal-match-label {
+    font-size: 18px;
+    letter-spacing: 3px;
+    padding-left: 3px;
+    -unity-text-align: middle-center;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.reveal-root .reveal-match-value {
+    font-size: 88px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 18px rgb(0, 0, 0);
+}
+
+.reveal-root .reveal-verdict-box {
+    min-width: 300px;
+    margin-right: 28px;
+}
+
+.reveal-root .reveal-verdict {
+    font-size: 40px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    margin-bottom: 8px;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
+}
+
+.reveal-root .reveal-guesses-label {
+    font-size: 16px;
+    letter-spacing: 2.4px;
+    -unity-text-align: middle-left;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 6px;
+}
+
+.reveal-root .reveal-guesses {
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: 360px;
+}
+
+.reveal-root .reveal-swatch {
+    width: 28px;
+    height: 28px;
+    margin: 0 6px 6px 0;
+    border-width: 2px;
+    border-color: rgba(0, 0, 0, 0.6);
+}
+
+.reveal-root .reveal-button.unity-button {
+    min-width: 220px;
+    height: 52px;
+    margin: 0;
+    padding: 8px 30px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.45);
+    color: rgb(255, 255, 255);
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 2.4px;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.reveal-root .is-hidden {
+    display: none;
+}
