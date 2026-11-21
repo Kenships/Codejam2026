@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router'
 import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
 import {
   Card,
@@ -36,6 +36,15 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
 
   const [error, setError] = useState<string | null>(null)
   const [isJoining, setIsJoining] = useState(false)
+
+  // Pre-fill the room code from a link / QR code: /join?room=ABCD
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const fromLink = searchParams.get('room')
+    if (!fromLink) return
+    const result = validateRoomCode(fromLink)
+    if (result.ok) setRoom(result.room)
+  }, [searchParams, setRoom])
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()

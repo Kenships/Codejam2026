@@ -19,8 +19,52 @@ const JOIN_TIMEOUT_MS = 10_000
 const RECONNECT_BASE_MS = 500
 const RECONNECT_MAX_MS = 5_000
 
-// TODO: set to false (and remove dev bypasses) once the relay backend is running
-export const DEV_MOCK_MODE = true
+/**
+ * Fake the relay entirely (no WebSocket) so the UI can be clicked through offline.
+ * Opt-in with VITE_DEV_MOCK=true in frontend/.env.local, and ONLY under `npm run dev`:
+ * a production build (`npm run build`) can never ship in mock mode by accident.
+ */
+export const DEV_MOCK_MODE =
+  import.meta.env.DEV && import.meta.env.VITE_DEV_MOCK === 'true'
+
+/** sessionStorage key for a relay URL passed as ?ws=... (the Cloudflare Tunnel backup). */
+const RELAY_OVERRIDE_KEY = 'hueslider.relayUrl'
+
+/**
+ * Capture `?ws=wss://...` from the address bar and remember it for this tab.
+ * Runs once at startup, before the router redirects (which can drop the query),
+ * and is stored so it survives navigating from /join to /play/:roomCode.
+ * `?ws=` with an empty value forgets a previous override.
+ */
+function captureRelayOverride(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const value = new URLSearchParams(window.location.search).get('ws')
+    if (value === null) return
+    const trimmed = value.trim()
+    if (trimmed === '') {
+      window.sessionStorage.removeItem(RELAY_OVERRIDE_KEY)
+    } else if (/^wss?:\/\//i.test(trimmed)) {
+      window.sessionStorage.setItem(RELAY_OVERRIDE_KEY, trimmed)
+    } else {
+      console.warn(`[relayClient] Ignoring ?ws=${trimmed}: must start with ws:// or wss://`)
+    }
+  } catch {
+    // sessionStorage can be unavailable (private mode, blocked storage): just skip the override
+  }
+}
+
+function getRelayOverride(): string | null {
+  try {
+    return typeof window === 'undefined'
+      ? null
+      : window.sessionStorage.getItem(RELAY_OVERRIDE_KEY)
+  } catch {
+    return null
+  }
+}
+
+captureRelayOverride()
 
 export class RelayJoinError extends Error {
   readonly code?: ErrorCode
@@ -32,9 +76,12 @@ export class RelayJoinError extends Error {
   }
 }
 
+/** Relay URL, in priority order: ?ws= override (this tab) → VITE_RELAY_URL → local dev relay. */
 export function getRelayUrl(): string {
   const configured = import.meta.env.VITE_RELAY_URL?.trim()
-  const url = configured && configured.length > 0 ? configured : DEFAULT_LOCAL_RELAY_URL
+  const url =
+    getRelayOverride() ??
+    (configured && configured.length > 0 ? configured : DEFAULT_LOCAL_RELAY_URL)
 
   if (
     typeof window !== 'undefined' &&
