@@ -132,4 +132,80 @@ To see relay logs while a test runs, change `setLogLevel("silent")` to `"debug"`
 
 ## Deploying
 
-*To be written once the deployment plan is decided.*
+The relay runs on **Railway**, deployed from the **`main`** branch. The frontend runs on Cloudflare
+Pages and the Unity host runs on the demo laptop. All of them connect to the same `wss://` URL.
+
+**Order:** deploy the relay first (the frontend build needs its URL). Lock down `ALLOWED_ORIGINS`
+last, once the real Pages URL exists.
+
+### 1. Railway service
+
+New project → Deploy from GitHub repo → this repo, then in the service's **Settings**:
+
+| Setting | Value | Why |
+|---|---|---|
+| Branch | `main` | Every push to this branch redeploys the relay |
+| Root directory | `relay` | The repo also contains Unity and the frontend |
+| **Watch paths** | `/relay/**` | **Important.** Without this, a frontend-only push redeploys the relay and closes every open room (`room_closed {server_shutdown}`), even in the middle of a demo. |
+| Start command | `npm start` | |
+| Healthcheck path | `/healthz` | Railway waits for this before switching traffic to a new deploy |
+| Region | US East (Virginia) | Closest to Montreal. Railway has no Canadian region. |
+| Replicas | **1, never more** | Rooms live in memory. Two instances would each hold different rooms. |
+| Networking | Generate domain | Gives `https://<name>.up.railway.app`. Clients use `wss://<name>.up.railway.app`. |
+
+**Variables** (Railway sets `PORT` itself):
+
+| Variable | Value |
+|---|---|
+| `LOG_LEVEL` | `info` (`debug` while troubleshooting) |
+| `ALLOWED_ORIGINS` | Leave **unset** until step 3, then the real Pages domain |
+
+**Node version:** [.node-version](.node-version) pins **22.18.0**. Don't remove it. Node 22.6–22.17
+can't run our `.ts` files without an extra flag, so the relay would crash on startup. After the
+first deploy, the logs should show `INFO relay listening port=...`.
+
+**Plan:** the free Trial credit covers a hackathon weekend. If it runs low, switch to Hobby and set
+a **hard usage limit** in the workspace's usage settings. The Free plan isn't suitable: services
+sleep when idle and the monthly allowance is very small.
+
+### 2. Frontend (Cloudflare Pages)
+
+Project `hueslider`, root `frontend`, build `npm run build`, output `dist`, variable
+`VITE_WS_URL=wss://<railway-domain>`. Vite builds this value into the bundle, so **changing it
+means redeploying the frontend**. Set the build watch paths to `frontend/*`.
+
+### 3. Lock down origins
+
+Once Pages shows the project's real domain (it may be `hueslider-xyz.pages.dev` if `hueslider` was
+taken), set in Railway:
+
+```
+ALLOWED_ORIGINS=https://<pages-domain>,https://*.<pages-domain>
+```
+
+The wildcard entry allows Pages preview deploys. The logs should show
+`INFO allowed origins origins=...`. If phones get close code `1008`, this list is wrong.
+
+### 4. Checks after every deploy
+
+1. `curl https://<railway-domain>/healthz` returns `{"ok":true,...}`
+2. Fake clients talk through it:
+   `npm run host -- wss://<railway-domain>`, then
+   `npm run player -- <CODE> Harry wss://<railway-domain>`
+3. A real phone on **mobile data** (not the venue Wi-Fi) joins through the Pages site
+4. **Redeploy test:** with a room open, redeploy. Everyone should get `room_closed {server_shutdown}`.
+5. In the Railway logs, follow one phone by its `conn=` number
+
+### Backup: run the relay on the demo laptop
+
+If Railway or the venue network fails:
+
+```bash
+cd relay && npm start                            # relay on the laptop
+cloudflared tunnel --url http://localhost:8080   # prints https://<random>.trycloudflare.com
+```
+
+- **Phones:** open `https://<pages-domain>/?ws=wss://<random>.trycloudflare.com`
+  (needs the frontend's `?ws=` override; make a QR code for it)
+- **Unity:** set its relay URL to `wss://<random>.trycloudflare.com`
+- The tunnel URL changes every time it starts. **Rehearse this once before the event.**
