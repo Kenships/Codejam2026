@@ -11,7 +11,7 @@ export function LoginPage() {
 
     return (
         <div
-            className="relative bg-black flex min-h-dvh items-center justify-center px-4 py-8"
+            className="fixed inset-0 h-dvh overflow-hidden overscroll-none touch-none bg-black flex items-center justify-center px-4 py-4 sm:py-8"
             style={{ '--hue': color } as CSSProperties}
         >
             <div className="absolute inset-0">
