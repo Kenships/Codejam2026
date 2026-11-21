@@ -46,7 +46,7 @@ export function HueBar({ value, onChange }: Props) {
       aria-valuemax={100}
       aria-valuenow={value === null ? undefined : Math.round(value * 100)}
       tabIndex={0}
-      className="relative h-5 w-full cursor-pointer touch-none border-2 border-(--hue)"
+      className="relative h-3 w-full cursor-pointer touch-none border-2 border-(--hue)"
       style={{ background: open ? BAR : value === null ? '#ffffff' : colorAt(value) }}
       onPointerDown={(e) => {
         if (!open) return setOpen(true) // first click only reveals the gradient
