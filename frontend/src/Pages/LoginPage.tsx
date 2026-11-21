@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react'
+
 import PixelBlast from '../components/PixelBlast'
 import { LoginCard } from '../components/LoginCard'
 import { HueBar, colorAt } from '@/components/HueBar'
