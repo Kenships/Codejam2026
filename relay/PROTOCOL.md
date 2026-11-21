@@ -24,6 +24,7 @@ inspects the game payload `d`.
 | Ordering | Messages from one sender arrive in the order they were sent. No ordering is guaranteed *between* different senders. |
 | Heartbeat | Relay sends a WebSocket `ping` every 25 s. Browsers and NativeWebSocket answer automatically — clients do nothing. A socket that misses a pong is terminated. |
 | Rate limit | ~40 messages/second per socket. Excess messages are dropped with `error: rate_limited`. |
+| Room size | 1 host + max **12 players**. Disconnected players still hold a seat (and count) until their grace period ends. |
 | HTTP | `GET /healthz` → `200 {"ok":true,"uptime":<seconds>}`. Everything else is `404`. |
 
 Every message, in both directions, has a string field **`t`** (type). Read `t` first, then the
