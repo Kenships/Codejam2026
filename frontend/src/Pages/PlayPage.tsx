@@ -10,6 +10,7 @@ import {
 } from '@/components/PlayingBoardCard'
 import { RoundResultsCard } from '@/components/RoundResultsCard'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
+import { TrueHueTitle } from '@/components/TrueHueTitle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createMockCompressedDrawing } from '@/lib/drawingCodec'
@@ -492,17 +493,19 @@ export function PlayPage() {
 
       <div className="relative flex flex-col items-center gap-4 w-full max-w-100">
         <div className="flex flex-col items-center select-none">
-          <h1
-            className={`w-max pl-[0.05em] font-jersey font-semibold tracking-wider uppercase text-center text-(--hue) [text-shadow:0_0_10px_#000,0_0_20px_#000,0_0_32px_#000] ${
+          <TrueHueTitle
+            overlapAnimate={
+              activePhase === 'waiting' ||
+              activePhase === 'drawing_done' ||
+              activePhase === 'finished'
+            }
+            hueAngle={waitingHue}
+            compact={
               activePhase === 'drawing' ||
               activePhase === 'playing' ||
               activePhase === 'playing_done'
-                ? 'text-4xl sm:text-5xl'
-                : 'text-6xl sm:text-8xl'
-            }`}
-          >
-            HueSlider
-          </h1>
+            }
+          />
         </div>
 
         <div className="w-full">{renderPhaseContent()}</div>
