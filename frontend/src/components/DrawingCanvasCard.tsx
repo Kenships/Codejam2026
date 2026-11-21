@@ -159,7 +159,8 @@ export function DrawingCanvasCard({
       if (eraser) {
         payload.eraser = true
       }
-      relayClient.send('all', payload)
+      // Strokes go to the host only: Unity draws them live; phones never display them
+      relayClient.send('host', payload)
     }
   }, [])
 
@@ -305,7 +306,7 @@ export function DrawingCanvasCard({
     if (submitted || strokesRef.current.length === 0) return
     strokesRef.current = strokesRef.current.slice(0, -1)
     setStrokesCount(strokesRef.current.length)
-    relayClient.send('all', { t: 'undo' })
+    relayClient.send('host', { t: 'undo' })
     redrawCanvas()
   }
 
@@ -315,7 +316,7 @@ export function DrawingCanvasCard({
     activeStrokeRef.current = null
     pendingBatchRef.current = null
     setStrokesCount(0)
-    relayClient.send('all', { t: 'clear' })
+    relayClient.send('host', { t: 'clear' })
     redrawCanvas()
   }
 

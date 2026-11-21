@@ -210,15 +210,18 @@ Send `remainingMs`, not absolute timestamps — device clocks are not in sync.
 
 ## 8. Client notes
 
-**Unity (NativeWebSocket)**
-- Call `websocket.DispatchMessageQueue()` every frame in `Update()` (non-WebGL builds), or no
-  messages are delivered.
+**Unity (NativeWebSocket 2.x)** — implemented in `CodejamBackend/Assets/Scripts/Networking/RelayClient.cs`
+- Version 2.x raises its events on Unity's main thread automatically. **No `DispatchMessageQueue()`
+  needed** (that was version 1.x). Just create the `WebSocket` on the main thread (e.g. in `Start`).
+- `await websocket.Connect()` only returns when the connection **closes** (it runs the receive loop),
+  so don't put code after it expecting to run once connected; use `OnOpen`.
 - `JsonUtility` cannot parse the arbitrary `d` object. Use Newtonsoft
   (`com.unity.nuget.newtonsoft-json`): parse to `JObject`, switch on `["t"]`.
 - On unexpected close, reconnect and send `host_resume` with the saved `room` + `hostKey`.
+  If it answers `host_active`, the relay hasn't noticed the old connection died yet: retry in a few seconds.
 - **Keep the room alive:** a room with no messages for 10 minutes is closed (`room_closed {reason:"idle"}`).
-  Heartbeat pings don't count, only real messages. While a game is waiting (lobby, long pauses), re-send
-  `state` to `"all"` every ~30 s even if nothing changed. It also re-syncs any phone that missed an update.
+  Heartbeat pings don't count, only real messages. `RelayClient` sends `{"t":"keepalive"}` to the
+  players every 30 s; phones ignore it.
 
 **React (browser `WebSocket`)**
 - Pages is served over HTTPS, so the relay URL **must** be `wss://`.
