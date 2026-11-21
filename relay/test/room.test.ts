@@ -100,6 +100,19 @@ describe("Room.rejoin / markDisconnected", () => {
         assert.equal(r?.seat, seat);
         assert.equal(r?.seat.name, "Harry");
     });
+
+    test("markDisconnected returns whether it actually disconnected someone", () => {
+        const room = newRoom();
+        const a = fakeConn("tabA");
+        const seat = join(room, "Harry", a);
+
+        const b = fakeConn("tabB");
+        room.rejoin(seat.playerId, b);
+        assert.equal(room.markDisconnected(seat.playerId, a), false);
+        assert.equal(room.markDisconnected(seat.playerId, b), true);
+        assert.equal(room.markDisconnected(seat.playerId, b), false);
+        assert.equal(room.markDisconnected("unknown", b), false);
+    });
 });
 
 describe("Room.removePlayer", () => {

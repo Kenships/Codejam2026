@@ -53,7 +53,7 @@ export class Room {
         return { ok: true, seat};
     }
 
-    rejoin(playerId : string, conn : Conn) {
+    rejoin(playerId : string, conn : Conn)  {
         const seat = this.seats.get(playerId);
         if (!seat) {
             return null
@@ -64,11 +64,13 @@ export class Room {
         return { seat, oldConn};
     }
 
-    markDisconnected(playerId : string, conn : Conn) {
+    markDisconnected(playerId : string, conn : Conn) : boolean {
         const seat = this.seats.get(playerId);
         if (seat && seat.conn === conn) {
             seat.conn = null;
+            return true;
         }
+        return false;
     }
 
     removePlayer(playerId : string) {
@@ -140,6 +142,14 @@ export class Room {
         }
         
         return false;
+    }
+
+    ConnectedPlayers() : (Seat & { conn: Conn})[] {
+        return [...this.seats.values()].filter((seat): seat is Seat & { conn: Conn } => seat.conn !== null,);
+    }
+
+    getHostKey() {
+        return this.hostKey
     }
 
 }
