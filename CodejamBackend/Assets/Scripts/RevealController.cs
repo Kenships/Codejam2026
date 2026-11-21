@@ -1,8 +1,32 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Alchemy.Inspector;
 using PrimeTween;
 using UnityEngine;
+
+/// <summary>What a finished reveal showed, for the UI.</summary>
+public readonly struct RevealResult
+{
+    /// <summary>Colour of the merged body (the room's mix).</summary>
+    public readonly Color MixedColor;
+
+    public readonly Color TrueColor;
+
+    /// <summary>The colours that went into the mix.</summary>
+    public readonly IReadOnlyList<Color> GuessedColors;
+
+    /// <summary>How close the mix is to the true colour, 0-1.</summary>
+    public readonly float Match;
+
+    public RevealResult(Color mixedColor, Color trueColor, IReadOnlyList<Color> guessedColors)
+    {
+        MixedColor = mixedColor;
+        TrueColor = trueColor;
+        GuessedColors = guessedColors ?? Array.Empty<Color>();
+        Match = RevealController.MatchScore(mixedColor, trueColor);
+    }
+}
 
 /// <summary>
 /// The true colour reveal at the end of a round. Takes the last body out
@@ -29,6 +53,11 @@ public class RevealController : MonoBehaviour
     // Extra room around the pair (1 = they touch the screen edges)
     [SerializeField, Min(1f)] private float padding = 1.25f;
 
+    // Fractions of the screen height kept clear above and below the pair
+    // for the reveal UI (header on top, labels and result card below)
+    [SerializeField, Range(0f, 0.45f)] private float reservedTop = 0.16f;
+    [SerializeField, Range(0f, 0.45f)] private float reservedBottom = 0.32f;
+
     [Title("True Color Body")]
     [SerializeField, Min(0.01f)] private float growDuration = 0.5f;
     [SerializeField, Min(0f)] private float growOvershoot = 1f;
@@ -54,6 +83,33 @@ public class RevealController : MonoBehaviour
     public ColorBody TrueBody { get; private set; }
 
     public bool IsRevealing => _tween.isAlive;
+
+    /// <summary>The camera the reveal frames (revealCamera or Camera.main).</summary>
+    public Camera RevealCamera => revealCamera != null ? revealCamera : Camera.main;
+
+    /// <summary>Fraction of the screen height kept clear above the pair.</summary>
+    public float ReservedTop => reservedTop;
+
+    /// <summary>Fraction of the screen height kept clear below the pair.</summary>
+    public float ReservedBottom => reservedBottom;
+
+    /// <summary>The result of the last finished reveal, if any.</summary>
+    public RevealResult? LastResult { get; private set; }
+
+    /// <summary>The merged body has left the physics and starts sliding.</summary>
+    public event Action<ColorBody> Started;
+
+    /// <summary>The merged body has finished sliding into place.</summary>
+    public event Action<ColorBody> MergedPlaced;
+
+    /// <summary>The true colour body has appeared and starts blending.</summary>
+    public event Action<ColorBody> TrueBodyCreated;
+
+    /// <summary>The true colour body has landed on the true colour.</summary>
+    public event Action<RevealResult> Revealed;
+
+    /// <summary>The reveal's bodies were removed.</summary>
+    public event Action Cleared;
 
     private void Awake()
     {
@@ -82,23 +138,63 @@ public class RevealController : MonoBehaviour
         Color trueColor)
     {
         MergedBody = merged;
+        LastResult = null;
 
         float radius = merged.Radius;
         float offset = radius + gap * 0.5f;
 
-        Camera cam = revealCamera != null ? revealCamera : Camera.main;
+        Camera cam = RevealCamera;
 
         Vector3 center = cam != null ? cam.transform.position : merged.transform.position;
         center.z = merged.transform.position.z;
 
+        float size = 0f;
+
+        if (cam != null && cam.orthographic)
+        {
+            size = FitOrthographicSize(cam, radius, offset);
+
+            // Sit the pair in the middle of the space the UI leaves free
+            center.y -= (reservedTop - reservedBottom) * size;
+        }
+
         Vector3 leftPos = center - Vector3.right * offset;
         Vector3 rightPos = center + Vector3.right * offset;
 
+        Started?.Invoke(merged);
+
         // 1. Make room and slide the merged body left
-        yield return SlideRoutine(merged, leftPos, cam, radius, offset);
+        yield return SlideRoutine(merged, leftPos, cam, size);
+
+        MergedPlaced?.Invoke(merged);
 
         // 2. Grow the true colour body beside it
         yield return GrowRoutine(rightPos, radius, guessedColors, trueColor);
+
+        RevealResult result = new(merged.Color, trueColor, guessedColors);
+        LastResult = result;
+        Revealed?.Invoke(result);
+    }
+
+    /// <summary>
+    /// How close two colours are, 0 (opposite) to 1 (identical). Mostly
+    /// hue distance, which counts for less the greyer or darker either
+    /// colour is, plus any saturation and brightness difference.
+    /// </summary>
+    public static float MatchScore(Color a, Color b)
+    {
+        Color.RGBToHSV(a, out float ha, out float sa, out float va);
+        Color.RGBToHSV(b, out float hb, out float sb, out float vb);
+
+        float hue = Mathf.Abs(Mathf.DeltaAngle(ha * 360f, hb * 360f)) / 180f;
+        hue *= Mathf.Min(sa, sb) * Mathf.Min(va, vb);
+
+        float saturation = Mathf.Abs(sa - sb);
+        float brightness = Mathf.Abs(va - vb);
+
+        float distance = Mathf.Sqrt(hue * hue + saturation * saturation + brightness * brightness);
+
+        return 1f - Mathf.Clamp01(distance);
     }
 
     /// <summary>
@@ -118,11 +214,14 @@ public class RevealController : MonoBehaviour
 
         MergedBody = null;
         TrueBody = null;
+        LastResult = null;
 
         if (_pausedZoom != null)
             _pausedZoom.enabled = true;
 
         _pausedZoom = null;
+
+        Cleared?.Invoke();
     }
 
     #region Steps
@@ -168,8 +267,7 @@ public class RevealController : MonoBehaviour
         ColorBody merged,
         Vector3 leftPos,
         Camera cam,
-        float radius,
-        float offset)
+        float size)
     {
         _tween = Sequence.Create()
             .Group(Tween.Position(merged.transform, leftPos, slideDuration, slideEase))
@@ -184,14 +282,22 @@ public class RevealController : MonoBehaviour
             if (_pausedZoom != null)
                 _pausedZoom.enabled = false;
 
-            // Half-height that fits both circles (width / aspect) with padding
-            float aspect = Mathf.Max(0.01f, cam.aspect);
-            float size = Mathf.Max(radius, (offset + radius) / aspect) * padding;
-
             _tween.Group(Tween.CameraOrthographicSize(cam, size, slideDuration, slideEase));
         }
 
         yield return _tween.ToYieldInstruction();
+    }
+
+    /// <summary>
+    /// Orthographic half-height that fits both bodies side by side (width /
+    /// aspect) and between the reserved top and bottom bands, with padding.
+    /// </summary>
+    private float FitOrthographicSize(Camera cam, float radius, float offset)
+    {
+        float aspect = Mathf.Max(0.01f, cam.aspect);
+        float usable = Mathf.Max(0.1f, 1f - reservedTop - reservedBottom);
+
+        return Mathf.Max(radius / usable, (offset + radius) / aspect) * padding;
     }
 
     private IEnumerator GrowRoutine(
@@ -211,8 +317,14 @@ public class RevealController : MonoBehaviour
         ColorBody truth = colorPhysics.CreateBody(path[0], StartRadius, position);
         TrueBody = truth;
 
+        // Same shape as what it's compared against (e.g. the merged cube)
+        if (MergedBody != null)
+            truth.Sprite = MergedBody.Sprite;
+
         if (playEffect)
             truth.PlayMergeEffect();
+
+        TrueBodyCreated?.Invoke(truth);
 
         // Grow and colour blend start together. The scale tween is made
         // here rather than with ColorBody.ScaleRadius, because that keeps

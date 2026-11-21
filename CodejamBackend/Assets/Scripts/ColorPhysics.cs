@@ -13,6 +13,10 @@ public class ColorPhysics : MonoBehaviour
 
     [SerializeField] private ColorBody colorBodyPrefab;
 
+    // Optional sprite for every body (empty = keep the prefab's sprite).
+    // Collisions stay circular whatever the sprite looks like.
+    [SerializeField] private Sprite bodySprite;
+
     [Title("Particles")]
     // Bodies placed in the scene; copied into the runtime list on Awake
     [SerializeField, FormerlySerializedAs("colorBody")]
@@ -144,6 +148,38 @@ public class ColorPhysics : MonoBehaviour
     // particles added in the meantime are still merged (seconds)
     [SerializeField, Min(0f)] private float squashAllGracePeriod = 2.5f;
 
+    [Title("Merge Into Cube")]
+    // Sprite for the merged cube (empty = a generated white square)
+    [SerializeField] private Sprite cubeSprite;
+
+    // How long the physics clumps every body together before they burst
+    // into the cube
+    [SerializeField, Min(0.01f)] private float cubeCollapseDuration = 0.5f;
+
+    // Over the clumping, cohesion (each body's pull toward the cluster
+    // centre, per step) ramps up to this...
+    [SerializeField, Range(0f, 1f)] private float cubeCollapseCohesion = 0.4f;
+
+    // ...and centering (the whole cluster's pull toward this transform)
+    // is multiplied up to this
+    [SerializeField, Min(1f)] private float cubeCenteringMultiplier = 4f;
+
+    // The cube then pops in from this fraction of its size, overshooting
+    // (near 1 since the clump is already about the cube's size)
+    [SerializeField, Range(0f, 1f)] private float cubePopStartScale = 0.8f;
+    [SerializeField, Min(0.01f)] private float cubePopDuration = 0.5f;
+    [SerializeField, Min(0f)] private float cubePopOvershoot = 3f;
+
+    // How long the cube sits after popping in before it bursts
+    [SerializeField, Min(0f)] private float cubeBurstDelay = 0.4f;
+
+    // The burst: swells to this multiple of its size while fading out
+    [SerializeField, Min(0.01f)] private float cubeBurstDuration = 0.2f;
+    [SerializeField, Min(1f)] private float cubeBurstScale = 1.4f;
+
+    // Played on the burst (empty = mergeSound)
+    [SerializeField] private AudioClip cubeBurstSound;
+
     #endregion
 
     #region State
@@ -207,6 +243,13 @@ public class ColorPhysics : MonoBehaviour
     private readonly List<MergePair> _timedOutPairs = new();
 
     private Coroutine _squashAllRoutine;
+    private Coroutine _cubeRoutine;
+    private PrimeTween.Sequence _cubeCollapseTween;
+
+    // While MergeAllIntoCube collapses the bodies: 0 -> 1 over the collapse
+    private bool _collapsing;
+    private float _collapseRamp;
+    private static Sprite _generatedSquare;
 
     private readonly Queue<(Color color, float radius)> _spawnQueue = new();
     private Coroutine _spawnRoutine;
@@ -343,8 +386,10 @@ public class ColorPhysics : MonoBehaviour
 
             Vector3 nextPos = body.CurrentPos + velocity;
 
+            // The wave fades out during a cube collapse
             if (waveEnabled)
-                nextPos += WaveAcceleration(body.CurrentPos) * (dt * dt);
+                nextPos += WaveAcceleration(body.CurrentPos) *
+                           (dt * dt * (_collapsing ? 1f - _collapseRamp : 1f));
 
             body.LastPos = body.CurrentPos;
             body.CurrentPos = nextPos;
@@ -361,7 +406,11 @@ public class ColorPhysics : MonoBehaviour
         {
             ApplyClusterCorrections();
             ApplyMergePull(iterationDt);
-            SolveCollisions();
+
+            // During a cube collapse nothing repels, so cohesion can pull
+            // every body into the same point
+            if (!_collapsing)
+                SolveCollisions();
         }
     }
 
@@ -374,9 +423,20 @@ public class ColorPhysics : MonoBehaviour
         int count = _active.Count;
         Vector3 center = GetClusterCenter();
 
+        // During MergeAllIntoCube: cohesion and centering ramp up, sorting
+        // fades out, so the physics itself crushes the bodies together
+        float ramp = _collapsing ? _collapseRamp : 0f;
+
+        float centering = Mathf.Min(
+            1f,
+            centeringStrength * Mathf.Lerp(1f, cubeCenteringMultiplier, ramp)
+        );
+        float cohesion = Mathf.Lerp(cohesionStrength, cubeCollapseCohesion, ramp);
+        float sortStrength = hsvSortStrength * (1f - ramp);
+
         // Pulls the whole cluster toward this transform
         Vector3 centeringCorrection =
-            (transform.position - center) * centeringStrength;
+            (transform.position - center) * centering;
 
         for (int i = 0; i < count; i++)
         {
@@ -405,10 +465,10 @@ public class ColorPhysics : MonoBehaviour
             if (!_mergeLookup.ContainsKey(body))
             {
                 Vector3 sortCorrection =
-                    (desiredOffset - currentOffset) * hsvSortStrength;
+                    (desiredOffset - currentOffset) * sortStrength;
 
                 Vector3 cohesionCorrection =
-                    -currentOffset * cohesionStrength;
+                    -currentOffset * cohesion;
 
                 correction += sortCorrection + cohesionCorrection;
             }
@@ -687,6 +747,233 @@ public class ColorPhysics : MonoBehaviour
         _squashAllRoutine = null;
     }
 
+    public bool IsMergingIntoCube => _cubeRoutine != null;
+
+    /// <summary>
+    /// Merges everything at once: the physics clumps them up (cohesion and
+    /// centering ramp up, sorting and the wave fade out), then they burst
+    /// into a single cube that pops in with the total
+    /// area and the area-weighted HSV average colour. After cubeBurstDelay
+    /// it bursts (merge effect left behind, swell and fade) and is removed,
+    /// leaving no bodies.
+    /// </summary>
+    [Button]
+    public void MergeAllIntoCube()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("ColorPhysics.MergeAllIntoCube only works in Play mode.");
+            return;
+        }
+
+        if (_cubeRoutine != null)
+            return;
+
+        _cubeRoutine = StartCoroutine(MergeAllIntoCubeRoutine());
+    }
+
+    private IEnumerator MergeAllIntoCubeRoutine()
+    {
+        // Let any queued spawns land first so they're included
+        while (IsSpawning)
+            yield return null;
+
+        // Pair-by-pair merging would fight the collapse
+        if (_squashAllRoutine != null)
+        {
+            StopCoroutine(_squashAllRoutine);
+            _squashAllRoutine = null;
+        }
+
+        List<ColorBody> bodies = new();
+
+        foreach (ColorBody body in _bodies)
+        {
+            if (body != null)
+                bodies.Add(body);
+        }
+
+        if (bodies.Count == 0)
+        {
+            _cubeRoutine = null;
+            yield break;
+        }
+
+        // The collapse merges everything, so drop any pair merges (and
+        // finish their unsquash so the shrink below owns the scale)
+        foreach (ColorBody body in bodies)
+        {
+            CancelMerge(body);
+            body.CompleteScaleTween();
+        }
+
+        // Starting sizes and the totals, before anything shrinks
+        Dictionary<ColorBody, float> startRadii = new(bodies.Count);
+        float totalArea = 0f;
+        Color color = bodies[0].Color;
+
+        foreach (ColorBody body in bodies)
+        {
+            float startRadius = body.Radius;
+            float area = startRadius * startRadius;
+
+            startRadii[body] = startRadius;
+
+            // Fold colours in one at a time (like the overlap shader)
+            if (totalArea > 0f)
+                color = AverageHSV(color, body.Color, totalArea, area);
+
+            totalArea += area;
+        }
+
+        // Same area as all of them together, like a normal merge
+        float radius = Mathf.Sqrt(totalArea);
+
+        // Hand the clumping to the physics: cohesion and centering ramp up
+        // while sorting and the wave fade out (see ApplyClusterCorrections).
+        // Collisions are off (see SolveConstraints), so they converge on a
+        // single point instead of packing into a clump.
+        _collapsing = true;
+        _collapseRamp = 0f;
+
+        float elapsed = 0f;
+
+        while (elapsed < cubeCollapseDuration)
+        {
+            yield return new WaitForFixedUpdate();
+
+            elapsed += Time.fixedDeltaTime;
+
+            // Ease out: they snap together fast, then hold the clump
+            float t = Mathf.Clamp01(elapsed / cubeCollapseDuration);
+            _collapseRamp = 1f - (1f - t) * (1f - t);
+        }
+
+        _collapsing = false;
+        _collapseRamp = 0f;
+
+        // The cube appears where they ended up (area-weighted)
+        Vector3 center = Vector3.zero;
+        float centerWeight = 0f;
+
+        foreach (ColorBody body in bodies)
+        {
+            if (body == null)
+                continue;
+
+            float area = startRadii[body] * startRadii[body];
+            center += body.CurrentPos * area;
+            centerWeight += area;
+        }
+
+        center = centerWeight > 0f ? center / centerWeight : transform.position;
+
+        foreach (ColorBody body in bodies)
+        {
+            if (body == null)
+                continue;
+
+            RemoveBody(body);
+            Destroy(body.gameObject);
+        }
+
+        // Pop the cube in at the centre
+        ColorBody cube = Instantiate(colorBodyPrefab, center, Quaternion.identity, bodies[0].transform.parent);
+
+        cube.ScaleRadius(
+            start: radius * cubePopStartScale,
+            end: radius,
+            duration: cubePopDuration,
+            overshoot: cubePopOvershoot
+        );
+
+        cube.Color = color;
+        AddBody(cube);
+
+        // After AddBody, which applies bodySprite
+        cube.Sprite = cubeSprite != null ? cubeSprite : GetGeneratedSquare();
+
+        PlaySound(mergeSound);
+
+        yield return new WaitForSeconds(cubePopDuration + cubeBurstDelay);
+
+        // Burst: out of the physics, effect left behind, swell and fade
+        RemoveBody(cube);
+        cube.CompleteScaleTween();
+        cube.PlayDetachedEffect();
+        PlaySound(cubeBurstSound != null ? cubeBurstSound : mergeSound);
+
+        _cubeCollapseTween = PrimeTween.Sequence.Create()
+            .Group(PrimeTween.Tween.Scale(
+                cube.transform,
+                cube.transform.localScale * cubeBurstScale,
+                cubeBurstDuration,
+                PrimeTween.Ease.OutQuad
+            ))
+            .Group(PrimeTween.Tween.Alpha(
+                cube.Renderer,
+                0f,
+                cubeBurstDuration,
+                PrimeTween.Ease.OutQuad
+            ));
+
+        yield return _cubeCollapseTween.ToYieldInstruction();
+
+        if (cube != null)
+            Destroy(cube.gameObject);
+
+        _cubeRoutine = null;
+    }
+
+    private static void PlaySound(AudioClip clip)
+    {
+        if (clip == null || AudioManager.Instance == null)
+            return;
+
+        AudioManager.Instance.NewAudio(clip)
+            .RandomizePitch()
+            .Create()
+            .Play();
+    }
+
+    /// <summary>A 1x1 unit white square, made once, for when no cubeSprite is set.</summary>
+    private static Sprite GetGeneratedSquare()
+    {
+        if (_generatedSquare != null)
+            return _generatedSquare;
+
+        const int size = 4;
+
+        Texture2D texture = new(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "GeneratedSquare",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+            hideFlags = HideFlags.HideAndDontSave
+        };
+
+        Color32[] pixels = new Color32[size * size];
+
+        for (int i = 0; i < pixels.Length; i++)
+            pixels[i] = new Color32(255, 255, 255, 255);
+
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+
+        // pixelsPerUnit = size, so it's 1 unit across like the Circle sprite
+        _generatedSquare = Sprite.Create(
+            texture,
+            new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f),
+            size
+        );
+
+        _generatedSquare.name = "GeneratedSquare";
+        _generatedSquare.hideFlags = HideFlags.HideAndDontSave;
+
+        return _generatedSquare;
+    }
+
     private int CountLiveBodies()
     {
         int count = 0;
@@ -706,6 +993,10 @@ public class ColorPhysics : MonoBehaviour
     /// </summary>
     private bool TryStartMerge()
     {
+        // A cube collapse is already merging everything
+        if (_collapsing)
+            return false;
+
         List<ColorBody> available = GetAvailableBodies();
 
         if (available.Count < 2)
@@ -1226,8 +1517,35 @@ public class ColorPhysics : MonoBehaviour
         body.CurrentPos = body.transform.position;
         body.LastPos = body.CurrentPos;
 
+        ApplyBodySprite(body);
+
         _bodies.Add(body);
         _initialized.Add(body);
+    }
+
+    /// <summary>
+    /// The sprite every body uses (null = the prefab's own). Setting it at
+    /// runtime also swaps the sprite on every body already simulated.
+    /// </summary>
+    public Sprite BodySprite
+    {
+        get => bodySprite;
+        set
+        {
+            bodySprite = value;
+
+            foreach (ColorBody body in _bodies)
+            {
+                if (body != null)
+                    ApplyBodySprite(body);
+            }
+        }
+    }
+
+    private void ApplyBodySprite(ColorBody body)
+    {
+        if (bodySprite != null)
+            body.Sprite = bodySprite;
     }
 
     public void RemoveBody(ColorBody body)
@@ -1325,6 +1643,7 @@ public class ColorPhysics : MonoBehaviour
 
         body.transform.localScale = Vector3.one * (Mathf.Max(0.001f, radius) * 2f);
         body.Color = color;
+        ApplyBodySprite(body);
 
         return body;
     }
