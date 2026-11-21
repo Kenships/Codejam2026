@@ -11,7 +11,9 @@
     "dev": "node --watch --env-file-if-exists=.env src/index.ts",
     "start": "node src/index.ts",
     "test": "node --test \"test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "host": "node scripts/fake-host.ts",
+    "player": "node scripts/fake-player.ts"
   },
   "keywords": [],
   "author": "",
