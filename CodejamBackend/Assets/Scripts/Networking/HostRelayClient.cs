@@ -1,158 +1,196 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading.Tasks;
 using Alchemy.Inspector;
 using Core.Utility;
-using NativeWebSocket;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 namespace Codejam.Networking
 {
     /// <summary>
-    /// Unity Host WebSocket client for the True Hue relay (relay/PROTOCOL.md).
-    /// Connects via NativeWebSocket, routes host -> player messages (your_target, state, etc.),
-    /// and dispatches incoming player messages (drawing_submit, pfp_submit, guess) to listeners.
+    /// The GAME layer of the host's relay connection, used by GameManager.
+    ///
+    /// It owns no socket: <see cref="RelayClient"/> (the "Relay" object in the Menu scene,
+    /// kept alive across scenes) owns the connection, room, reconnects, players and
+    /// keepalive. This class turns game messages from phones into typed events
+    /// (drawing_submit, pfp_submit, guess) and wraps the host -> phone game messages
+    /// (your_target, state, round_drawing, results).
+    ///
+    /// If GameScene is played on its own, it creates a RelayClient, which resumes the
+    /// menu's last room if that's still alive (PlayerPrefs), or else makes a new one.
     /// </summary>
     public class HostRelayClient : Singleton<HostRelayClient>
     {
-        [Title("Relay Connection")]
-        [SerializeField] private string relayUrl = "ws://localhost:8080/";
+        [Title("Relay")]
+        [Tooltip("When no RelayClient exists (GameScene played without the menu), create one.")]
+        [SerializeField] private bool createRelayIfMissing = true;
+
+        [Tooltip("Log game messages in and out (stroke batches excluded).")]
         [SerializeField] private bool logTraffic = false;
 
-        private WebSocket _socket;
-        private bool _connecting;
-        private bool _isHostInRoom;
+        private RelayClient _relay;
 
-        public bool IsConnected => _socket != null && _socket.State == WebSocketState.Open;
-        public bool IsInRoom => IsConnected && _isHostInRoom;
-        public string RoomCode { get; private set; } = "";
-        public string HostKey { get; private set; } = "";
+        /// <summary>The connection layer this sits on (null until bound).</summary>
+        public RelayClient Relay => _relay;
 
+        /// <summary>True while the relay connection is up and the room is ours.</summary>
+        public bool IsConnected => IsInRoom;
+
+        public bool IsInRoom => _relay != null && _relay.Status == RelayStatus.InRoom;
+
+        public string RoomCode => _relay != null ? _relay.RoomCode ?? "" : "";
+
+        /// <summary>Secret for host_resume. Never send it to phones.</summary>
+        public string HostKey => _relay != null ? _relay.HostKey ?? "" : "";
+
+        /// <summary>A room became ready (new or resumed). Arguments: room code, host key.</summary>
         public event Action<string, string> RoomCreated;
+
+        /// <summary>Arguments: player id, name.</summary>
         public event Action<string, string> PlayerJoined;
+
+        /// <summary>Arguments: player id, name.</summary>
         public event Action<string, string> PlayerRejoined;
+
+        /// <summary>Argument: player id. Their seat is held for 30 s.</summary>
         public event Action<string> PlayerDisconnected;
+
+        /// <summary>Arguments: player id, reason ("timeout" or "kicked").</summary>
         public event Action<string, string> PlayerLeft;
+
+        /// <summary>
+        /// Arguments: player id, the payload, and the decoded drawing (null if it couldn't
+        /// be decoded). The receiver owns the texture.
+        /// </summary>
         public event Action<string, DrawingSubmitPayload, Texture2D> DrawingSubmitted;
+
+        /// <summary>Arguments: player id, gzip+base64 image. PlayerAvatars also turns these into sprites.</summary>
         public event Action<string, string> PfpSubmitted;
+
+        /// <summary>Arguments: player id, guessed hex (e.g. "#FF5733").</summary>
         public event Action<string, string> GuessSubmitted;
+
+        /// <summary>Every game message from a phone, after the typed events above.</summary>
         public event Action<string, JObject> GameMessageReceived;
+
+        /// <summary>The relay rejected something. Arguments: error code, message.</summary>
         public event Action<string, string> RelayError;
 
-        private void Update()
+        // Bound in Awake, not Start: GameManager checks IsInRoom in its own Start, and
+        // Start order between objects isn't guaranteed. The menu's RelayClient already
+        // exists by now (it persists across the scene load).
+        protected override void Awake()
         {
-#if !UNITY_WEBGL || UNITY_EDITOR
-            _socket?.DispatchMessageQueue();
-#endif
+            base.Awake();
+
+            if (Instance == this)
+                Bind();
         }
 
-        private async void OnApplicationQuit()
+        protected override void OnDestroy()
         {
-            await DisconnectAsync();
+            if (Instance == this)
+                Unbind();
+
+            base.OnDestroy();
         }
 
-        public async Task ConnectAndCreateRoomAsync()
+        #region Connection (RelayClient does the work)
+
+        /// <summary>
+        /// Makes sure the relay connection is running. RelayClient creates a room, or resumes
+        /// its saved one, by itself, and RoomCreated fires once the room is ready.
+        /// </summary>
+        public Task ConnectAndCreateRoomAsync()
         {
-            await ConnectAsync(onOpen: () =>
+            if (Bind())
+                _relay.Connect();
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Kept for compatibility. RelayClient resumes its own saved room (room + hostKey in
+        /// PlayerPrefs) automatically, so the arguments are not used.
+        /// </summary>
+        public Task ConnectAndResumeRoomAsync(string room, string hostKey) => ConnectAndCreateRoomAsync();
+
+        /// <summary>
+        /// Kept for compatibility; does nothing. The connection is shared with the lobby and
+        /// lives as long as the RelayClient, so the game layer never closes it.
+        /// </summary>
+        public Task DisconnectAsync() => Task.CompletedTask;
+
+        private bool Bind()
+        {
+            if (_relay != null)
+                return true;
+
+            RelayClient relay = RelayClient.Instance;
+
+            if (relay == null && createRelayIfMissing)
+                relay = CreateRelay();
+
+            if (relay == null)
             {
-                SendJson(new JObject { ["t"] = "host_create" });
-            });
+                Debug.LogWarning("[HostRelayClient] No RelayClient found; game messages won't reach phones.");
+                return false;
+            }
+
+            _relay = relay;
+            _relay.RoomReady += OnRoomReady;
+            _relay.PlayerJoined += OnPlayerJoined;
+            _relay.PlayerRejoined += OnPlayerRejoined;
+            _relay.PlayerDisconnected += OnPlayerDisconnected;
+            _relay.PlayerLeft += OnPlayerLeft;
+            _relay.GameMessage += OnGameMessage;
+            _relay.Error += OnRelayError;
+
+            if (IsInRoom)
+                SyncSession(_relay.RoomCode);
+
+            return true;
         }
 
-        public async Task ConnectAndResumeRoomAsync(string room, string hostKey)
+        private void Unbind()
         {
-            await ConnectAsync(onOpen: () =>
-            {
-                SendJson(new JObject
-                {
-                    ["t"] = "host_resume",
-                    ["room"] = room,
-                    ["hostKey"] = hostKey
-                });
-            });
-        }
-
-        private async Task ConnectAsync(Action onOpen)
-        {
-            if (_connecting)
+            if (_relay == null)
                 return;
 
-            await DisconnectAsync();
-
-            _connecting = true;
-            _isHostInRoom = false;
-
-            try
-            {
-                _socket = new WebSocket(relayUrl);
-
-                _socket.OnOpen += () =>
-                {
-                    _connecting = false;
-                    if (logTraffic)
-                        Debug.Log($"[HostRelayClient] Connected to {relayUrl}");
-
-                    onOpen?.Invoke();
-                };
-
-                _socket.OnError += err =>
-                {
-                    _connecting = false;
-                    Debug.LogWarning($"[HostRelayClient] WebSocket error: {err}");
-                    RelayError?.Invoke("socket_error", err);
-                };
-
-                _socket.OnClose += code =>
-                {
-                    _connecting = false;
-                    _isHostInRoom = false;
-                    if (logTraffic)
-                        Debug.Log($"[HostRelayClient] Closed ({code})");
-                };
-
-                _socket.OnMessage += bytes =>
-                {
-                    string json = Encoding.UTF8.GetString(bytes);
-                    HandleRawMessage(json);
-                };
-
-                await _socket.Connect();
-            }
-            catch (Exception ex)
-            {
-                _connecting = false;
-                Debug.LogWarning($"[HostRelayClient] Failed to connect: {ex.Message}");
-                RelayError?.Invoke("connect_failed", ex.Message);
-            }
+            _relay.RoomReady -= OnRoomReady;
+            _relay.PlayerJoined -= OnPlayerJoined;
+            _relay.PlayerRejoined -= OnPlayerRejoined;
+            _relay.PlayerDisconnected -= OnPlayerDisconnected;
+            _relay.PlayerLeft -= OnPlayerLeft;
+            _relay.GameMessage -= OnGameMessage;
+            _relay.Error -= OnRelayError;
+            _relay = null;
         }
 
-        public async Task DisconnectAsync()
+        /// <summary>
+        /// Same setup as the Menu scene's "Relay" object, on its own GameObject so it
+        /// persists independently of this one.
+        /// </summary>
+        private static RelayClient CreateRelay()
         {
-            _isHostInRoom = false;
-            _connecting = false;
+            Debug.Log("[HostRelayClient] No RelayClient (scene played without the menu); creating one.");
 
-            if (_socket != null)
-            {
-                WebSocket old = _socket;
-                _socket = null;
-
-                if (old.State == WebSocketState.Open || old.State == WebSocketState.Connecting)
-                {
-                    try
-                    {
-                        await old.Close();
-                    }
-                    catch
-                    {
-                        // Ignore close exceptions during teardown
-                    }
-                }
-            }
+            GameObject go = new("Relay");
+            RelayClient relay = go.AddComponent<RelayClient>();
+            go.AddComponent<PlayerAvatars>();
+            return relay;
         }
 
-        #region Host -> Relay Sends
+        private static void SyncSession(string roomCode)
+        {
+            GameSessionData.RoomCode = roomCode ?? "";
+            GameSessionData.HostKey = Instance != null ? Instance.HostKey : "";
+        }
+
+        #endregion
+
+        #region Host -> Phones
 
         /// <summary>
         /// Notifies all players that the drawing phase has started and sends each player their secret target hex.
@@ -170,7 +208,7 @@ namespace Codejam.Networking
                 for (int i = 0; i < players.Count; i++)
                 {
                     GameSessionData.SessionPlayer p = players[i];
-                    if (p == null || string.IsNullOrEmpty(p.playerId))
+                    if (p == null || string.IsNullOrEmpty(p.playerId) || !IsRelayPlayer(p.playerId))
                         continue;
 
                     string hex = "#" + ColorUtility.ToHtmlStringRGB(p.secretTargetColor);
@@ -182,21 +220,12 @@ namespace Codejam.Networking
                 }
             }
 
-            SendToTarget("players", new JObject
-            {
-                ["t"] = "state",
-                ["phase"] = "drawing",
-                ["round"] = round,
-                ["remainingMs"] = remainingMs
-            });
+            BroadcastPhaseState("drawing", round, remainingMs);
         }
 
         /// <summary>Broadcasts a phase/state update to all connected players.</summary>
         public void BroadcastPhaseState(string phase, int round, int remainingMs)
         {
-            if (!IsInRoom)
-                return;
-
             SendToTarget("players", new JObject
             {
                 ["t"] = "state",
@@ -217,6 +246,7 @@ namespace Codejam.Networking
             if (!IsInRoom || drawing == null)
                 return;
 
+            // The phone recognises gzip by its header, so the submitted image goes back out as-is
             SendToTarget("players", new JObject
             {
                 ["t"] = "round_drawing",
@@ -229,137 +259,179 @@ namespace Codejam.Networking
             BroadcastPhaseState("playing", round, remainingMs);
         }
 
+        /// <summary>
+        /// Sends one player their results screen (the phone needs this; state "results"
+        /// alone shows nothing).
+        /// </summary>
+        public void SendResults(
+            string playerId,
+            Color targetColor,
+            int roundPoints,
+            int totalPoints,
+            int roundRank,
+            int overallRank,
+            int totalPlayers)
+        {
+            if (!IsRelayPlayer(playerId))
+                return;
+
+            SendToTarget(playerId, new JObject
+            {
+                ["t"] = "results",
+                ["targetHex"] = "#" + ColorUtility.ToHtmlStringRGB(targetColor),
+                ["roundPoints"] = roundPoints,
+                ["totalPoints"] = totalPoints,
+                ["roundRank"] = roundRank,
+                ["overallRank"] = overallRank,
+                ["totalPlayers"] = totalPlayers
+            });
+        }
+
+        /// <summary>
+        /// Sends a game payload. target: a player id, or "players" / "all" for every
+        /// connected phone.
+        /// </summary>
         public void SendToTarget(string target, JObject payload)
         {
             if (!IsInRoom || string.IsNullOrEmpty(target) || payload == null)
                 return;
 
-            SendJson(new JObject
-            {
-                ["t"] = "send",
-                ["to"] = target,
-                ["d"] = payload
-            });
-        }
-
-        private void SendJson(JObject obj)
-        {
-            if (!IsConnected)
-                return;
-
-            string text = obj.ToString(Newtonsoft.Json.Formatting.None);
             if (logTraffic)
-                Debug.Log($"[HostRelayClient] -> {text}");
+                Debug.Log($"[HostRelayClient] -> {target}: {payload.ToString(Newtonsoft.Json.Formatting.None)}");
 
-            _ = _socket.SendText(text);
+            if (target == "players" || target == "all")
+                _relay.SendToAllPlayers(payload);
+            else
+                _relay.SendToPlayer(target, payload);
         }
+
+        /// <summary>
+        /// False for ids the relay doesn't know (e.g. the menu's simulated players), which
+        /// the relay would reject with unknown_target.
+        /// </summary>
+        private bool IsRelayPlayer(string playerId) =>
+            _relay != null && !string.IsNullOrEmpty(playerId) && _relay.Players.ContainsKey(playerId);
 
         #endregion
 
-        #region Relay -> Host Parsing
+        #region Relay -> Game
 
-        private void HandleRawMessage(string json)
+        private void OnRoomReady(string code)
         {
-            if (logTraffic)
-                Debug.Log($"[HostRelayClient] <- {json}");
-
-            JObject root;
-            try
-            {
-                root = JObject.Parse(json);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[HostRelayClient] Invalid JSON: {ex.Message}");
-                return;
-            }
-
-            string type = root.Value<string>("t");
-            if (string.IsNullOrEmpty(type))
-                return;
-
-            switch (type)
-            {
-                case "room_created":
-                    RoomCode = root.Value<string>("room") ?? "";
-                    HostKey = root.Value<string>("hostKey") ?? "";
-                    GameSessionData.RoomCode = RoomCode;
-                    GameSessionData.HostKey = HostKey;
-                    _isHostInRoom = true;
-                    RoomCreated?.Invoke(RoomCode, HostKey);
-                    break;
-
-                case "host_resumed":
-                    RoomCode = root.Value<string>("room") ?? RoomCode;
-                    _isHostInRoom = true;
-                    break;
-
-                case "player_joined":
-                    PlayerJoined?.Invoke(root.Value<string>("playerId"), root.Value<string>("name"));
-                    break;
-
-                case "player_rejoined":
-                    PlayerRejoined?.Invoke(root.Value<string>("playerId"), root.Value<string>("name"));
-                    break;
-
-                case "player_disconnected":
-                    PlayerDisconnected?.Invoke(root.Value<string>("playerId"));
-                    break;
-
-                case "player_left":
-                    PlayerLeft?.Invoke(root.Value<string>("playerId"), root.Value<string>("reason"));
-                    break;
-
-                case "msg":
-                    string from = root.Value<string>("from");
-                    JObject d = root["d"] as JObject;
-                    if (!string.IsNullOrEmpty(from) && d != null)
-                        HandleGamePayload(from, d);
-                    break;
-
-                case "error":
-                    RelayError?.Invoke(root.Value<string>("code"), root.Value<string>("message"));
-                    break;
-            }
+            SyncSession(code);
+            Raise(RoomCreated, code, HostKey);
         }
 
-        private void HandleGamePayload(string fromPlayerId, JObject d)
+        private void OnPlayerJoined(RelayPlayer player) => Raise(PlayerJoined, player.Id, player.Name);
+
+        private void OnPlayerRejoined(RelayPlayer player) => Raise(PlayerRejoined, player.Id, player.Name);
+
+        private void OnPlayerDisconnected(RelayPlayer player) => Raise(PlayerDisconnected, player.Id);
+
+        private void OnPlayerLeft(RelayPlayer player, string reason) => Raise(PlayerLeft, player.Id, reason);
+
+        private void OnRelayError(string code, string message) => Raise(RelayError, code, message);
+
+        private void OnGameMessage(string fromPlayerId, JObject d)
         {
             string gameType = d.Value<string>("t");
+
+            if (logTraffic && gameType != "stroke_batch")
+                Debug.Log($"[HostRelayClient] <- {fromPlayerId}: {gameType}");
 
             switch (gameType)
             {
                 case "drawing_submit":
-                    DrawingSubmitPayload payload = new()
-                    {
-                        t = gameType,
-                        prompt = d.Value<string>("prompt") ?? "",
-                        image = d.Value<string>("image") ?? "",
-                        mime = d.Value<string>("mime") ?? "image/png",
-                        compression = d.Value<string>("compression") ?? "gzip",
-                        w = d.Value<int?>("w") ?? 0,
-                        h = d.Value<int?>("h") ?? 0
-                    };
-                    Texture2D drawingTex = DrawingImageCodec.DecompressToTexture2D(payload.image);
-                    DrawingSubmitted?.Invoke(fromPlayerId, payload, drawingTex);
+                    HandleDrawingSubmit(fromPlayerId, d);
                     break;
 
                 case "pfp_submit":
                     string pfpBase64 = d.Value<string>("image");
                     if (!string.IsNullOrEmpty(pfpBase64))
-                        PfpSubmitted?.Invoke(fromPlayerId, pfpBase64);
+                        Raise(PfpSubmitted, fromPlayerId, pfpBase64);
                     break;
 
                 case "guess":
                     string hex = d.Value<string>("hex");
                     if (!string.IsNullOrEmpty(hex))
-                        GuessSubmitted?.Invoke(fromPlayerId, hex);
+                        Raise(GuessSubmitted, fromPlayerId, hex);
                     break;
             }
 
-            GameMessageReceived?.Invoke(fromPlayerId, d);
+            if (GameMessageReceived == null)
+                return;
+
+            try
+            {
+                GameMessageReceived.Invoke(fromPlayerId, d);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+        }
+
+        private void HandleDrawingSubmit(string fromPlayerId, JObject d)
+        {
+            DrawingSubmitPayload payload;
+            try
+            {
+                payload = new DrawingSubmitPayload
+                {
+                    t = "drawing_submit",
+                    prompt = d.Value<string>("prompt") ?? "",
+                    image = d.Value<string>("image") ?? "",
+                    mime = d.Value<string>("mime") ?? "image/png",
+                    compression = d.Value<string>("compression") ?? "gzip",
+                    w = d.Value<int?>("w") ?? 0,
+                    h = d.Value<int?>("h") ?? 0
+                };
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[HostRelayClient] Malformed drawing_submit from {fromPlayerId}: {e.Message}");
+                return;
+            }
+
+            // A bad image shouldn't lose the submission (or throw inside the relay's handler)
+            Texture2D texture = null;
+            try
+            {
+                texture = DrawingImageCodec.DecompressToTexture2D(payload.image);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[HostRelayClient] Couldn't decode drawing from {fromPlayerId}: {e.Message}");
+            }
+
+            if (DrawingSubmitted == null)
+            {
+                if (texture != null)
+                    Destroy(texture);
+                return;
+            }
+
+            try
+            {
+                DrawingSubmitted.Invoke(fromPlayerId, payload, texture);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         #endregion
+
+        // One broken subscriber must not stop the relay's other listeners.
+        private static void Raise<T>(Action<T> handler, T arg)
+        {
+            try { handler?.Invoke(arg); } catch (Exception e) { Debug.LogException(e); }
+        }
+
+        private static void Raise<T1, T2>(Action<T1, T2> handler, T1 a, T2 b)
+        {
+            try { handler?.Invoke(a, b); } catch (Exception e) { Debug.LogException(e); }
+        }
     }
 }

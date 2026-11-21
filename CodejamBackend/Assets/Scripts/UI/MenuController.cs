@@ -56,6 +56,10 @@ public class MenuController : MonoBehaviour
 
     [SerializeField] private string gameSceneName = "GameScene";
 
+    [Title("Relay")]
+    [Tooltip("Take the room code and players from the RelayClient (the persistent \"Relay\" object). Without one, Create Game falls back to a local code for offline testing.")]
+    [SerializeField] private bool useRelay = true;
+
     [Title("Events")]
     [SerializeField] private UnityEvent onCreateGameRequested;
     [SerializeField] private UnityEvent<string> onStartMatchRequested;
@@ -104,6 +108,9 @@ public class MenuController : MonoBehaviour
     private bool _inLobby;
     private string _currentRoomCode = "";
     private int _simulatedColorIndex;
+
+    private RelayClient _relay;
+    private PlayerAvatars _avatars;
 
     /// <summary>The colour currently picked on the hue bar (white if none).</summary>
     public Color SelectedColor => _hue;
@@ -185,10 +192,17 @@ public class MenuController : MonoBehaviour
         SetView(inLobby: false);
         RefreshLobbyUI();
         ApplyHue(_hueBar != null ? _hueBar.Color : Color.white);
+
+        BindRelay();
     }
+
+    // The Relay object may wake after this one, so try again once every Awake has run
+    private void Start() => BindRelay();
 
     private void OnDisable()
     {
+        UnbindRelay();
+
         if (_hueBar != null)
             _hueBar.ValueChanged -= OnHueChanged;
 
@@ -238,7 +252,19 @@ public class MenuController : MonoBehaviour
         if (_inLobby || !_creating)
             handledExternally = true;
 
-        if (!handledExternally && autoOpenLobbyOnCreate)
+        if (handledExternally)
+            return;
+
+        if (_relay != null)
+        {
+            // The relay connects on its own at startup; if the room isn't ready yet,
+            // stay on "CREATING ROOM..." until RoomReady opens the lobby
+            if (_relay.Status == RelayStatus.InRoom && !string.IsNullOrEmpty(_relay.RoomCode))
+                OpenRelayLobby();
+            else if (_relay.Status == RelayStatus.Disconnected)
+                _relay.Connect();
+        }
+        else if (autoOpenLobbyOnCreate)
         {
             OpenLobby(GenerateRoomCode());
         }
@@ -300,7 +326,10 @@ public class MenuController : MonoBehaviour
         ApplyHue(_hue);
     }
 
-    /// <summary>Closes the current room lobby, despawns player character cubes, and returns to the Create Game card.</summary>
+    /// <summary>
+    /// Closes the current room lobby, despawns player character cubes, and returns to the Create Game card.
+    /// With the relay, the room and its players stay; Create Game reopens the same lobby.
+    /// </summary>
     public void CloseLobby()
     {
         if (!_inLobby)
@@ -362,6 +391,169 @@ public class MenuController : MonoBehaviour
 
         if (_title != null)
             _title.OverlapAnimate = inLobby;
+    }
+
+    #endregion
+
+    #region Relay
+
+    private void BindRelay()
+    {
+        if (!useRelay || _relay != null || !Application.isPlaying)
+            return;
+
+        _relay = RelayClient.Instance;
+
+        if (_relay == null)
+            return;
+
+        // Prefer the PlayerAvatars next to the live RelayClient: when the menu reloads,
+        // the scene's own copy of the Relay object is a duplicate being destroyed
+        _avatars = _relay.GetComponent<PlayerAvatars>();
+        if (_avatars == null)
+            _avatars = FindAnyObjectByType<PlayerAvatars>();
+
+        _relay.StatusChanged += OnRelayStatusChanged;
+        _relay.RoomReady += OnRelayRoomReady;
+        _relay.RoomLost += OnRelayRoomLost;
+        _relay.PlayerJoined += OnRelayPlayerJoined;
+        _relay.PlayerRejoined += OnRelayPlayerRejoined;
+        _relay.PlayerDisconnected += OnRelayPlayerDisconnected;
+        _relay.PlayerLeft += OnRelayPlayerLeft;
+
+        if (_avatars != null)
+            _avatars.AvatarChanged += OnRelayAvatarChanged;
+    }
+
+    private void UnbindRelay()
+    {
+        if (_relay != null)
+        {
+            _relay.StatusChanged -= OnRelayStatusChanged;
+            _relay.RoomReady -= OnRelayRoomReady;
+            _relay.RoomLost -= OnRelayRoomLost;
+            _relay.PlayerJoined -= OnRelayPlayerJoined;
+            _relay.PlayerRejoined -= OnRelayPlayerRejoined;
+            _relay.PlayerDisconnected -= OnRelayPlayerDisconnected;
+            _relay.PlayerLeft -= OnRelayPlayerLeft;
+        }
+
+        if (_avatars != null)
+            _avatars.AvatarChanged -= OnRelayAvatarChanged;
+
+        _relay = null;
+        _avatars = null;
+    }
+
+    /// <summary>Opens the lobby on the relay's room with everyone already seated in it.</summary>
+    private void OpenRelayLobby()
+    {
+        OpenLobby(_relay.RoomCode);
+        SyncPlayersFromRelay();
+    }
+
+    /// <summary>
+    /// Makes the lobby match the relay's player list: drops anyone it no longer has,
+    /// adds or updates the rest (also needed after a resume, which brings players back
+    /// without PlayerJoined events).
+    /// </summary>
+    private void SyncPlayersFromRelay()
+    {
+        if (_relay == null)
+            return;
+
+        for (int i = _players.Count - 1; i >= 0; i--)
+        {
+            string id = _players[i].playerId;
+
+            // Leave the menu's simulated test players alone
+            if (!id.StartsWith("p_sim_") && !_relay.Players.ContainsKey(id))
+                RemovePlayer(id);
+        }
+
+        foreach (RelayPlayer player in _relay.Players.Values)
+            AddRelayPlayer(player);
+    }
+
+    private void AddRelayPlayer(RelayPlayer player)
+    {
+        Texture2D avatar = null;
+        if (_avatars != null && _avatars.TryGetAvatar(player.Id, out Sprite sprite) && sprite != null)
+            avatar = sprite.texture;
+
+        // PlayerAvatars owns the texture, so the lobby mustn't destroy it
+        AddOrUpdatePlayer(player.Id, player.Name, connected: player.Connected, avatar: avatar, ownsAvatarTexture: false);
+    }
+
+    private void OnRelayStatusChanged(RelayStatus status)
+    {
+        if (!_inLobby)
+            return;
+
+        if (status == RelayStatus.Reconnecting)
+            ShowError("Connection lost. Reconnecting...");
+    }
+
+    private void OnRelayRoomReady(string code)
+    {
+        if (_inLobby)
+        {
+            // Resumed (same code) or replaced (new code) while the lobby was open
+            _currentRoomCode = code;
+            ShowError(null);
+            SyncPlayersFromRelay();
+            RefreshLobbyUI();
+        }
+        else if (_creating)
+        {
+            OpenRelayLobby();
+        }
+    }
+
+    private void OnRelayRoomLost()
+    {
+        if (!_inLobby)
+            return;
+
+        // The relay makes a new room right away; RoomReady brings the new code
+        _currentRoomCode = "";
+        SyncPlayersFromRelay();
+        ShowError("The room closed. Making a new one: players need to join again.");
+        RefreshLobbyUI();
+    }
+
+    private void OnRelayPlayerJoined(RelayPlayer player)
+    {
+        if (_inLobby)
+            AddRelayPlayer(player);
+    }
+
+    private void OnRelayPlayerRejoined(RelayPlayer player)
+    {
+        if (_inLobby)
+            AddRelayPlayer(player);
+    }
+
+    private void OnRelayPlayerDisconnected(RelayPlayer player)
+    {
+        if (_inLobby)
+            SetPlayerConnected(player.Id, false);
+    }
+
+    private void OnRelayPlayerLeft(RelayPlayer player, string reason)
+    {
+        if (_inLobby)
+            RemovePlayer(player.Id);
+    }
+
+    private void OnRelayAvatarChanged(string playerId, Sprite sprite)
+    {
+        // A null sprite means the player left; RemovePlayer handles that
+        if (!_inLobby || sprite == null || _relay == null)
+            return;
+
+        if (_relay.Players.TryGetValue(playerId, out RelayPlayer player))
+            AddRelayPlayer(player);
     }
 
     #endregion

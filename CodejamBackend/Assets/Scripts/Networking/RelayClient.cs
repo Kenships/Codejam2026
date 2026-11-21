@@ -81,6 +81,9 @@ namespace Codejam.Networking
 
         public string RelayUrl => relayUrl;
 
+        /// <summary>Secret for host_resume. Unity-side only: never send it to phones.</summary>
+        internal string HostKey => _hostKey;
+
         /// <summary>Everyone with a seat, including players currently reconnecting.</summary>
         public IReadOnlyDictionary<string, RelayPlayer> Players => _players;
 
@@ -109,6 +112,12 @@ namespace Codejam.Networking
         /// relay, so it can be trusted) and the payload `d` (its "t" field is the type).
         /// </summary>
         public event Action<string, JObject> GameMessage;
+
+        /// <summary>
+        /// The relay rejected something we sent. Arguments: error code (see PROTOCOL.md) and
+        /// its message, if any. Resume errors are handled here first (new room / retry).
+        /// </summary>
+        public event Action<string, string> Error;
 
         // ---- lifecycle ----
 
@@ -336,7 +345,7 @@ namespace Codejam.Networking
                     break;
 
                 case "error":
-                    HandleError((string)message["code"]);
+                    HandleError((string)message["code"], (string)message["message"]);
                     break;
 
                 default:
@@ -345,8 +354,10 @@ namespace Codejam.Networking
             }
         }
 
-        private void HandleError(string code)
+        private void HandleError(string code, string text)
         {
+            Raise(Error, code, text);
+
             switch (code)
             {
                 case "room_not_found":
