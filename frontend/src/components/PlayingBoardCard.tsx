@@ -150,45 +150,26 @@ export function PlayingBoardCard({
           </div>
 
           {isSubmitted ? (
-            <div className="flex w-full flex-col items-center gap-1.5 border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
-              <div className="flex items-center gap-2">
+            <div className="flex w-full flex-col items-center gap-1 border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
+              <div className="flex items-center gap-1.5">
                 <Check className="h-4 w-4 text-(--hue)" />
-                <span
-                  className="h-4 w-4 shrink-0 border border-white/80"
-                  style={{ backgroundColor: displayColor }}
-                  aria-hidden="true"
-                />
-                <span className="text-sm sm:text-base tracking-wider uppercase tabular-nums text-(--hue)">
-                  Submitted {displayColor.toUpperCase()}
+                <span className="text-base sm:text-lg text-(--hue)">
+                  Wait for other players to submit...
                 </span>
               </div>
-              <p className="text-base sm:text-lg text-(--hue)">
-                Wait for other players to submit...
-              </p>
             </div>
           ) : (
             <div className="flex w-full items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-6 w-6 shrink-0 border-2 border-white/80"
-                  style={{ backgroundColor: pickedColor }}
-                  aria-hidden="true"
-                />
-                <span className="text-base sm:text-lg tracking-wider uppercase tabular-nums text-(--hue)">
-                  {pickedColor.toUpperCase()}
-                </span>
-                <button
-                  type="button"
-                  disabled={hue === null}
-                  onClick={handleResetHue}
-                  title="Reset back to white"
-                  className="flex h-7 items-center gap-1 border-2 border-(--hue)/60 bg-black/60 px-2 text-xs text-(--hue) cursor-pointer hover:border-(--hue) disabled:opacity-40 disabled:cursor-default"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>White</span>
-                </button>
-              </div>
-
+              <Button
+                type="button"
+                disabled={hue === null}
+                onClick={handleResetHue}
+                title="Reset back to white"
+                className="transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-1.5 hover:bg-(--hue) hover:text-black"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset</span>
+              </Button>
               <Button
                 type="button"
                 onClick={handleSubmitGuess}
