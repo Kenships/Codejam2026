@@ -132,37 +132,43 @@ To see relay logs while a test runs, change `setLogLevel("silent")` to `"debug"`
 
 ## Deploying
 
-The relay runs on **Railway**, deployed from the **`main`** branch. The frontend runs on Cloudflare
-Pages and the Unity host runs on the demo laptop. All of them connect to the same `wss://` URL.
+The relay is **live** at:
 
-**Order:** deploy the relay first (the frontend build needs its URL). Lock down `ALLOWED_ORIGINS`
-last, once the real Pages URL exists.
+```
+wss://truehue-production.up.railway.app        (health check: https://truehue-production.up.railway.app/healthz)
+```
 
-### 1. Railway service
+The frontend (Cloudflare Pages) and the Unity host (demo laptop) both connect to this URL.
 
-New project → Deploy from GitHub repo → this repo, then in the service's **Settings**:
+### 1. Railway (how it's deployed)
 
-| Setting | Value | Why |
-|---|---|---|
-| Branch | `main` | Every push to this branch redeploys the relay |
-| Root directory | `relay` | The repo also contains Unity and the frontend |
-| **Watch paths** | `/relay/**` | **Important.** Without this, a frontend-only push redeploys the relay and closes every open room (`room_closed {server_shutdown}`), even in the middle of a demo. |
-| Start command | `npm start` | |
-| Healthcheck path | `/healthz` | Railway waits for this before switching traffic to a new deploy |
-| Region | US East (Virginia) | Closest to Montreal. Railway has no Canadian region. |
-| Replicas | **1, never more** | Rooms live in memory. Two instances would each hold different rooms. |
-| Networking | Generate domain | Gives `https://<name>.up.railway.app`. Clients use `wss://<name>.up.railway.app`. |
+The relay is deployed **from a laptop with the Railway CLI**, not from GitHub. (Railway's GitHub app
+can't read this repo because it belongs to another account.) This also means **pushing to GitHub
+never redeploys the relay**, so a teammate's push can't restart it and close every room mid-demo.
 
-**Variables** (Railway sets `PORT` itself):
-
-| Variable | Value |
+| | |
 |---|---|
-| `LOG_LEVEL` | `info` (`debug` while troubleshooting) |
-| `ALLOWED_ORIGINS` | Leave **unset** until step 3, then the real Pages domain |
+| Railway project | **TrueHue** (service created by `railway up`) |
+| Region | Railway default. Measured about 31 ms phone → relay → host, so no need to move it. |
+| Replicas | **1, never more.** Rooms live in memory. Two instances would each hold different rooms. |
+| Variables | `PORT=8080` (also the domain's target port). `ALLOWED_ORIGINS` is set in step 3. `LOG_LEVEL` defaults to `info`. |
+| Node | [.node-version](.node-version) pins **22.18.0**, and Railway reads it. **Don't remove it:** Node 22.6–22.17 can't run our `.ts` files without an extra flag, so the relay would crash on startup. |
 
-**Node version:** [.node-version](.node-version) pins **22.18.0**. Don't remove it. Node 22.6–22.17
-can't run our `.ts` files without an extra flag, so the relay would crash on startup. After the
-first deploy, the logs should show `INFO relay listening port=...`.
+**Day-to-day commands** (from `relay/`, after a one-time `brew install railway`, `railway login`, `railway link` → TrueHue):
+
+```bash
+railway up              # upload relay/ and deploy (the ONLY way it updates)
+railway logs            # watch live logs (Ctrl+C stops watching; the relay keeps running)
+railway variables       # list variables
+railway variables --set "LOG_LEVEL=debug"   # change one (triggers a quick redeploy)
+```
+
+`railway up` uploads the current folder, skipping anything in `.gitignore` (so not `node_modules` or
+`.env`). **Every redeploy closes all open rooms** (clients get `room_closed {server_shutdown}`), so
+don't redeploy during a game.
+
+**First-time setup** (already done, here for reference): `railway init` (new project) → `railway up`
+(creates the service and deploys) → `railway variables --set "PORT=8080"` → `railway domain`.
 
 **Plan:** the free Trial credit covers a hackathon weekend. If it runs low, switch to Hobby and set
 a **hard usage limit** in the workspace's usage settings. The Free plan isn't suitable: services
@@ -171,16 +177,16 @@ sleep when idle and the monthly allowance is very small.
 ### 2. Frontend (Cloudflare Pages)
 
 Project `hueslider`, root `frontend`, build `npm run build`, output `dist`, variable
-`VITE_WS_URL=wss://<railway-domain>`. Vite builds this value into the bundle, so **changing it
+`VITE_RELAY_URL=wss://truehue-production.up.railway.app`. Vite builds this value into the bundle, so **changing it
 means redeploying the frontend**. Set the build watch paths to `frontend/*`.
 
 ### 3. Lock down origins
 
 Once Pages shows the project's real domain (it may be `hueslider-xyz.pages.dev` if `hueslider` was
-taken), set in Railway:
+taken), run from `relay/`:
 
-```
-ALLOWED_ORIGINS=https://<pages-domain>,https://*.<pages-domain>
+```bash
+railway variables --set "ALLOWED_ORIGINS=https://<pages-domain>,https://*.<pages-domain>"
 ```
 
 The wildcard entry allows Pages preview deploys. The logs should show
@@ -188,13 +194,13 @@ The wildcard entry allows Pages preview deploys. The logs should show
 
 ### 4. Checks after every deploy
 
-1. `curl https://<railway-domain>/healthz` returns `{"ok":true,...}`
+1. `curl https://truehue-production.up.railway.app/healthz` returns `{"ok":true,...}`
 2. Fake clients talk through it:
-   `npm run host -- wss://<railway-domain>`, then
-   `npm run player -- <CODE> Harry wss://<railway-domain>`
+   `npm run host -- wss://truehue-production.up.railway.app`, then
+   `npm run player -- <CODE> Harry wss://truehue-production.up.railway.app`
 3. A real phone on **mobile data** (not the venue Wi-Fi) joins through the Pages site
-4. **Redeploy test:** with a room open, redeploy. Everyone should get `room_closed {server_shutdown}`.
-5. In the Railway logs, follow one phone by its `conn=` number
+4. **Redeploy test:** with a room open, run `railway up`. Everyone should get `room_closed {server_shutdown}`.
+5. In `railway logs`, follow one phone by its `conn=` number
 
 ### Backup: run the relay on the demo laptop
 
