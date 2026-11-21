@@ -57,6 +57,13 @@ public class RevealUI : MonoBehaviour
 
     public event Action PlayAgainRequested;
 
+    /// <summary>Updates the bottom action button label (e.g. "NEXT DRAWING" or "FINISH GAME").</summary>
+    public void SetActionButtonText(string text)
+    {
+        if (_playAgain != null && !string.IsNullOrEmpty(text))
+            _playAgain.text = text;
+    }
+
     private VisualElement _root;
     private VisualElement _header;
     private Label _title;
@@ -322,6 +329,8 @@ public class RevealUI : MonoBehaviour
     private void ApplyAccent(Color accent)
     {
         _accent = accent;
+
+        PersistentPixelBlastBackground.EnsureExists().SetAccentColor(accent);
 
         if (_title != null)
             _title.style.color = accent;

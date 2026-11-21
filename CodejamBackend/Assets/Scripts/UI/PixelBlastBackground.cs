@@ -136,6 +136,12 @@ public partial class PixelBlastBackground : VisualElement
 
     #region Simulation
 
+    /// <summary>
+    /// Allows a host MonoBehaviour (e.g. PersistentPixelBlastBackground) to drive a simulation
+    /// tick directly from Update() so the background never stalls across UIDocument re-sorts.
+    /// </summary>
+    public void ForceTick() => Tick();
+
     private void Tick()
     {
         float now = Time.realtimeSinceStartup;

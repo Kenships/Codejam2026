@@ -11,7 +11,7 @@
     align-items: center;
     justify-content: center;
     padding: 24px 36px;
-    background-color: rgb(0, 0, 0);
+    background-color: rgba(0, 0, 0, 0);
     color: rgb(255, 255, 255);
     -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
 }
@@ -252,4 +252,57 @@
     -unity-text-align: middle-center;
     white-space: nowrap;
     text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+.drawing-root .is-hidden {
+    display: none;
+}
+
+/* ---- Artist Merge Spotlight (Center of Screen After Icons Merge) ---- */
+
+.drawing-root .artist-spotlight {
+    position: absolute;
+    left: 50%;
+    top: 54%;
+    translate: -50% -50%;
+    align-items: center;
+    justify-content: center;
+}
+
+.drawing-root .artist-spotlight__kicker {
+    font-size: 28px;
+    -unity-font-style: bold;
+    letter-spacing: 3px;
+    margin-bottom: 14px;
+    text-shadow: 0 0 14px rgb(0, 0, 0);
+}
+
+.drawing-root .artist-spotlight__cube {
+    width: 156px;
+    height: 156px;
+    border-width: 4px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(255, 255, 255);
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.drawing-root .artist-spotlight__pfp {
+    width: 118px;
+    height: 118px;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.drawing-root .artist-spotlight__name {
+    padding: 6px 22px;
+    background-color: rgba(0, 0, 0, 0.85);
+    border-width: 3px;
+    border-color: rgb(255, 255, 255);
+    font-size: 38px;
+    -unity-font-style: bold;
+    letter-spacing: 2.5px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 14px rgb(0, 0, 0);
 }

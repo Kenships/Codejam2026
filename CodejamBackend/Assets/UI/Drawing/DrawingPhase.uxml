@@ -1,8 +1,14 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Drawing/DrawingPhase.uss"/>
     <ui:VisualElement name="drawing-root" class="drawing-root">
-        <PixelBlastBackground name="background" pixel-size="10" pattern-density="4" glow="0.5" drift="0.1" hover-radius="50" ripple-thickness="0.4" class="drawing-background"/>
         <ui:VisualElement name="submitted-icons-layer" picking-mode="Ignore" class="submitted-icons-layer"/>
+        <ui:VisualElement name="artist-spotlight" picking-mode="Ignore" class="artist-spotlight is-hidden">
+            <ui:Label name="artist-spotlight-kicker" text="NOW GUESSING" class="artist-spotlight__kicker"/>
+            <ui:VisualElement name="artist-spotlight-cube" class="artist-spotlight__cube">
+                <ui:VisualElement name="artist-spotlight-pfp" class="artist-spotlight__pfp"/>
+            </ui:VisualElement>
+            <ui:Label name="artist-spotlight-name" text="ARTIST" class="artist-spotlight__name"/>
+        </ui:VisualElement>
         <ui:VisualElement name="drawing-column" class="drawing-column">
             <ui:VisualElement name="drawing-header" class="drawing-header">
                 <TrueHueTitle name="title" overlap-animate="true" class="true-hue-title"/>

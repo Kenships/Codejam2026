@@ -1,0 +1,76 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Guessing/GuessingPhase.uss"/>
+    <ui:VisualElement name="guessing-root" picking-mode="Ignore" class="guessing-root">
+
+        <!-- Left Docked Artist + Black & White Drawing Panel (Leaves Stage Open for ColorPhysics Cubes) -->
+        <ui:VisualElement name="guessing-sidebar" class="guessing-sidebar">
+            <ui:VisualElement name="sidebar-top-row" class="sidebar-top-row">
+                <ui:Label name="round-label" text="DRAWING 1 / 4" class="sidebar-round-label"/>
+                <ui:VisualElement name="timer-badge" class="sidebar-timer-badge">
+                    <ui:Label name="guess-timer" text="30s" class="sidebar-timer-text"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="artist-row" class="artist-row">
+                <ui:VisualElement name="artist-cube" class="artist-cube">
+                    <ui:VisualElement name="artist-pfp" class="artist-pfp"/>
+                </ui:VisualElement>
+                <ui:VisualElement class="artist-text-col">
+                    <ui:Label text="ARTIST" class="artist-kicker"/>
+                    <ui:Label name="artist-name" text="PRISM" class="artist-name"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="drawing-viewport" class="drawing-viewport">
+                <ui:VisualElement name="drawing-image" class="drawing-image"/>
+            </ui:VisualElement>
+
+            <ui:Label name="drawing-prompt" text="&quot;Golden hour sunset&quot;" class="drawing-prompt"/>
+            <ui:Label name="guess-count" text="0 / 3 GUESSED" class="guess-count"/>
+
+            <ui:VisualElement name="guess-test-row" class="guess-test-row">
+                <ui:Button name="simulate-guess" text="+ SIMULATE GUESS" class="guessing-button"/>
+                <ui:Button name="merge-now" text="MERGE NOW" class="guessing-button"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Bottom Reveal Banner (Shown Once Guessed Cubes Merge Into a Singular Colour) -->
+        <ui:VisualElement name="reveal-banner" class="reveal-banner is-hidden">
+            <ui:VisualElement class="reveal-swatches-row">
+                <ui:VisualElement class="reveal-swatch-col">
+                    <ui:Label text="ROOM MERGED HUE" class="reveal-swatch-label"/>
+                    <ui:VisualElement name="merged-swatch" class="reveal-swatch"/>
+                    <ui:Label name="merged-hex" text="#FFFFFF" class="reveal-hex"/>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="reveal-center-col">
+                    <ui:Label name="match-percent" text="92% MATCH" class="reveal-match-percent"/>
+                    <ui:Label name="reveal-subtitle" text="True Hue Revealed!" class="reveal-subtitle"/>
+                    <ui:Button name="next-drawing" text="NEXT DRAWING" class="guessing-button guessing-button--next"/>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="reveal-swatch-col">
+                    <ui:Label text="TRUE HUE" class="reveal-swatch-label"/>
+                    <ui:VisualElement name="target-swatch" class="reveal-swatch"/>
+                    <ui:Label name="target-hex" text="#FF5733" class="reveal-hex"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Game Finished Overlay (Shown After All Drawings Are Complete) -->
+        <ui:VisualElement name="finished-overlay" class="finished-overlay is-hidden">
+            <ui:VisualElement class="finished-column">
+                <TrueHueTitle name="finished-title" overlap-animate="true" class="true-hue-title"/>
+                <ui:VisualElement name="finished-card" class="finished-card rainbow-border">
+                    <ui:Label text="GAME COMPLETE!" class="finished-card-title rainbow-text"/>
+                    <ui:Label name="finished-summary" text="All players' drawings have been guessed and revealed" class="finished-card-desc rainbow-dim-text"/>
+                    <ui:VisualElement class="finished-footer">
+                        <ui:Button name="back-to-menu" text="BACK TO MENU" class="guessing-button guessing-button--large"/>
+                        <ui:Button name="play-again" text="PLAY AGAIN" class="guessing-button guessing-button--large"/>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

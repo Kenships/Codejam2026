@@ -1555,6 +1555,46 @@ public class ColorPhysics : MonoBehaviour
         _initialized.Remove(body);
     }
 
+    /// <summary>
+    /// Stops any active spawning/merging and destroys every ColorBody managed by this physics instance.
+    /// </summary>
+    public void ClearAllBodies()
+    {
+        if (_spawnRoutine != null)
+        {
+            StopCoroutine(_spawnRoutine);
+            _spawnRoutine = null;
+        }
+
+        if (_squashAllRoutine != null)
+        {
+            StopCoroutine(_squashAllRoutine);
+            _squashAllRoutine = null;
+        }
+
+        _spawnQueue.Clear();
+        _mergePairs.Clear();
+        _mergeLookup.Clear();
+        _failedPairs.Clear();
+        _timedOutPairs.Clear();
+
+        for (int i = _bodies.Count - 1; i >= 0; i--)
+        {
+            ColorBody body = _bodies[i];
+            if (body != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(body.gameObject);
+                else
+                    DestroyImmediate(body.gameObject);
+            }
+        }
+
+        _bodies.Clear();
+        _active.Clear();
+        _initialized.Clear();
+    }
+
     [Button]
     public void SpawnRandomColor()
     {

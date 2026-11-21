@@ -32,7 +32,7 @@
                     <ui:Label name="guesses-label" text="WHAT WENT IN" class="reveal-guesses-label"/>
                     <ui:VisualElement name="guesses" class="reveal-guesses"/>
                 </ui:VisualElement>
-                <ui:Button name="play-again" text="PLAY AGAIN" class="reveal-button"/>
+                <ui:Button name="play-again" text="NEXT DRAWING" class="reveal-button"/>
             </ui:VisualElement>
         </ui:VisualElement>
 

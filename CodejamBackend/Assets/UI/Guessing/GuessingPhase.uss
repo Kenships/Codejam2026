@@ -1,0 +1,349 @@
+/* Guessing, Merge Reveal & Finished Console UI (1920x1080 16:9).
+   Transparent root so ColorPhysics 2D cubes remain fully visible on stage. */
+
+.guessing-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    color: rgb(255, 255, 255);
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.guessing-root .is-hidden {
+    display: none;
+}
+
+.guessing-root .unity-label {
+    margin: 0;
+    padding: 0;
+}
+
+/* ---- Left Docked Artist & B&W Drawing Card ---- */
+
+.guessing-root .guessing-sidebar {
+    position: absolute;
+    left: 40px;
+    top: 50%;
+    translate: 0 -50%;
+    width: 390px;
+    padding: 24px 26px;
+    background-color: rgba(0, 0, 0, 0.84);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    align-items: center;
+}
+
+.guessing-root .sidebar-top-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.guessing-root .sidebar-round-label {
+    font-size: 22px;
+    -unity-font-style: bold;
+    letter-spacing: 1.8px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.guessing-root .sidebar-timer-badge {
+    padding: 4px 14px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.65);
+}
+
+.guessing-root .sidebar-timer-text {
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 1.5px;
+    color: rgb(255, 255, 255);
+}
+
+.guessing-root .artist-row {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border-width: 2px;
+    border-color: rgba(255, 255, 255, 0.35);
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.guessing-root .artist-cube {
+    width: 50px;
+    height: 50px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(255, 255, 255);
+    align-items: center;
+    justify-content: center;
+    margin-right: 14px;
+    flex-shrink: 0;
+}
+
+.guessing-root .artist-pfp {
+    width: 38px;
+    height: 38px;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.guessing-root .artist-text-col {
+    flex-grow: 1;
+    justify-content: center;
+}
+
+.guessing-root .artist-kicker {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.guessing-root .artist-name {
+    font-size: 28px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    color: rgb(255, 255, 255);
+}
+
+.guessing-root .drawing-viewport {
+    width: 310px;
+    height: 310px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(0, 0, 0);
+    margin-bottom: 14px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.guessing-root .drawing-image {
+    width: 100%;
+    height: 100%;
+}
+
+.guessing-root .drawing-prompt {
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    margin-bottom: 8px;
+    color: rgb(255, 255, 255);
+}
+
+.guessing-root .guess-count {
+    font-size: 20px;
+    letter-spacing: 1.6px;
+    margin-bottom: 14px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.guessing-root .guess-test-row {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ---- Buttons ---- */
+
+.guessing-root .guessing-button.unity-button {
+    min-width: 155px;
+    height: 42px;
+    margin: 0 4px;
+    padding: 6px 14px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.55);
+    color: rgb(255, 255, 255);
+    font-size: 17px;
+    -unity-font-style: bold;
+    letter-spacing: 1.5px;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.guessing-root .guessing-button--next.unity-button {
+    min-width: 200px;
+    height: 46px;
+    margin-top: 10px;
+    font-size: 20px;
+}
+
+.guessing-root .guessing-button--large.unity-button {
+    min-width: 200px;
+    height: 52px;
+    margin: 0 10px;
+    font-size: 22px;
+    letter-spacing: 2px;
+}
+
+/* ---- Bottom Reveal Banner ---- */
+
+.guessing-root .reveal-banner {
+    position: absolute;
+    bottom: 34px;
+    left: 50%;
+    translate: -50% 0;
+    padding: 20px 36px;
+    background-color: rgba(0, 0, 0, 0.88);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+}
+
+.guessing-root .reveal-swatches-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.guessing-root .reveal-swatch-col {
+    align-items: center;
+    justify-content: center;
+    width: 180px;
+}
+
+.guessing-root .reveal-swatch-label {
+    font-size: 16px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.guessing-root .reveal-swatch {
+    width: 78px;
+    height: 78px;
+    border-width: 3px;
+    border-color: rgb(255, 255, 255);
+    margin-bottom: 6px;
+}
+
+.guessing-root .reveal-hex {
+    font-size: 20px;
+    -unity-font-style: bold;
+    letter-spacing: 1.8px;
+}
+
+.guessing-root .reveal-center-col {
+    align-items: center;
+    justify-content: center;
+    margin-left: 28px;
+    margin-right: 28px;
+}
+
+.guessing-root .reveal-match-percent {
+    font-size: 46px;
+    -unity-font-style: bold;
+    letter-spacing: 2.5px;
+    color: rgb(255, 255, 255);
+    text-shadow: 0 0 14px rgb(0, 0, 0);
+}
+
+.guessing-root .reveal-subtitle {
+    font-size: 20px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ---- Game Finished Overlay ---- */
+
+.guessing-root .finished-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    align-items: center;
+    justify-content: center;
+}
+
+.guessing-root .finished-background {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.guessing-root .finished-column {
+    width: 100%;
+    max-width: 620px;
+    align-items: center;
+}
+
+.guessing-root .menu-title {
+    font-size: 96px;
+    -unity-font-style: bold;
+    letter-spacing: 4.5px;
+    padding-left: 4.5px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 24px rgb(0, 0, 0);
+}
+
+.guessing-root .true-hue-title {
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.guessing-root .true-hue-title__animated {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: center;
+}
+
+.guessing-root .true-hue-title__letter {
+    letter-spacing: 1px;
+    padding-left: 0;
+}
+
+.guessing-root .true-hue-title__rh-slot {
+    position: relative;
+    flex-direction: row;
+    align-items: baseline;
+}
+
+.guessing-root .true-hue-title__r {
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+.guessing-root .finished-card {
+    width: 100%;
+    padding: 40px 44px;
+    background-color: rgba(0, 0, 0, 0.84);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    align-items: center;
+}
+
+.guessing-root .finished-card-title {
+    font-size: 44px;
+    -unity-font-style: bold;
+    letter-spacing: 2.5px;
+    margin-bottom: 10px;
+}
+
+.guessing-root .finished-card-desc {
+    font-size: 22px;
+    margin-bottom: 28px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.guessing-root .finished-footer {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}

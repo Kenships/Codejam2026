@@ -826,12 +826,20 @@ public class MenuController : MonoBehaviour
 
     private void PulseBackgroundRipple(VisualElement target)
     {
-        if (_background == null || target == null)
+        if (target == null)
             return;
 
         Vector2 worldCenter = target.worldBound.center;
-        Vector2 localPos = _background.WorldToLocal(worldCenter);
-        _background.AddRipple(localPos);
+
+        if (_background != null)
+        {
+            Vector2 localPos = _background.WorldToLocal(worldCenter);
+            _background.AddRipple(localPos);
+        }
+        else if (PersistentPixelBlastBackground.Instance != null)
+        {
+            PersistentPixelBlastBackground.Instance.AddRipple(worldCenter);
+        }
     }
 
     #endregion
@@ -866,6 +874,8 @@ public class MenuController : MonoBehaviour
 
         if (_background != null)
             _background.accentColor = hue;
+
+        PersistentPixelBlastBackground.EnsureExists().SetAccentColor(hue);
 
         if (_title != null)
             _title.BaseColor = hue;

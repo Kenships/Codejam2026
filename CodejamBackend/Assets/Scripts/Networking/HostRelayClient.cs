@@ -206,6 +206,29 @@ namespace Codejam.Networking
             });
         }
 
+        /// <summary>
+        /// Broadcasts the current artist's black-and-white drawing to players so they can guess its hue.
+        /// </summary>
+        public void BroadcastRoundDrawing(
+            GameSessionData.SubmittedDrawing drawing,
+            int round,
+            int remainingMs)
+        {
+            if (!IsInRoom || drawing == null)
+                return;
+
+            SendToTarget("players", new JObject
+            {
+                ["t"] = "round_drawing",
+                ["image"] = drawing.imageBase64 ?? "",
+                ["mime"] = string.IsNullOrEmpty(drawing.mime) ? "image/png" : drawing.mime,
+                ["prompt"] = drawing.prompt ?? "",
+                ["artistName"] = drawing.playerName ?? ""
+            });
+
+            BroadcastPhaseState("playing", round, remainingMs);
+        }
+
         public void SendToTarget(string target, JObject payload)
         {
             if (!IsInRoom || string.IsNullOrEmpty(target) || payload == null)

@@ -1,7 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Menu/Menu.uss?fileID=7433441132597879392&amp;guid=bd7b51021bae4fdebee2137e8b14dc06&amp;type=3#Menu"/>
     <ui:VisualElement name="menu-root" class="menu-root">
-        <PixelBlastBackground name="background" pixel-size="10" pattern-density="4" glow="0.5" drift="0.1" hover-radius="50" ripple-thickness="0.4" class="menu-background"/>
         <ui:VisualElement name="character-labels-layer" picking-mode="Ignore" class="character-labels-layer"/>
         <ui:VisualElement name="column" class="menu-column">
             <ui:VisualElement name="header" class="menu-header">
