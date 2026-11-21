@@ -1,0 +1,181 @@
+/* Port of the frontend's LoginPage + LoginCard (desktop "sm:" sizes).
+   Hue colours (text, borders, button hover) are applied from MenuController,
+   since USS variables can't be changed at runtime. */
+
+.menu-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background-color: rgb(0, 0, 0);
+    color: rgb(255, 255, 255);
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+.menu-root .menu-background {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* w-full max-w-100 */
+.menu-root .menu-column {
+    width: 100%;
+    max-width: 400px;
+}
+
+.menu-root .unity-label {
+    margin: 0;
+    padding: 0;
+}
+
+/* ---- Header ---- */
+
+.menu-root .menu-header {
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* text-8xl font-semibold tracking-wider uppercase */
+.menu-root .menu-title {
+    font-size: 96px;
+    -unity-font-style: bold;
+    letter-spacing: 4.8px;
+    padding-left: 4.8px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 20px rgb(0, 0, 0);
+}
+
+/* text-2xl */
+.menu-root .menu-subtitle {
+    font-size: 24px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
+}
+
+/* ---- Hue bar (h-3 border-2) ---- */
+
+.menu-root .hue-bar {
+    height: 12px;
+    width: 100%;
+    margin-bottom: 20px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(255, 255, 255);
+}
+
+/* w-4 rounded-sm border-2 bg-white, centred on the value */
+.menu-root .hue-bar__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 16px;
+    translate: -50% 0;
+    background-color: rgb(255, 255, 255);
+    border-width: 2px;
+    border-color: rgb(231, 229, 228);
+    border-radius: 6px;
+}
+
+/* ---- Card (bg-black/70 border-2; py-8 + form p-2 + header px-8) ---- */
+
+.menu-root .card {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    padding: 40px;
+}
+
+/* sm:text-2xl font-semibold tracking-wider uppercase */
+.menu-root .card-title {
+    font-size: 24px;
+    -unity-font-style: bold;
+    letter-spacing: 1.2px;
+    -unity-text-align: middle-center;
+    margin-bottom: 6px;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+/* sm:text-base leading-relaxed */
+.menu-root .card-description {
+    font-size: 16px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    margin-bottom: 6px;
+    text-shadow: 0 0 8px rgb(0, 0, 0);
+}
+
+.menu-root .card-content {
+    margin-bottom: 6px;
+}
+
+/* ---- Inputs (border-2 bg-black/50 p-2 text-base) ---- */
+
+.menu-root .menu-input {
+    margin: 0 0 16px 0;
+    padding: 0;
+    --unity-cursor-color: rgb(255, 255, 255);
+    --unity-selection-color: rgba(255, 255, 255, 0.35);
+}
+
+.menu-root .menu-input--room {
+    margin-bottom: 0;
+}
+
+.menu-root .menu-input .unity-base-text-field__input {
+    margin: 0;
+    padding: 8px;
+    min-height: 44px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.5);
+    font-size: 16px;
+    -unity-text-align: middle-left;
+}
+
+.menu-root .menu-input .unity-text-element {
+    font-size: 16px;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
+/* text-red-400 */
+.menu-root .card-error {
+    margin-top: 16px;
+    font-size: 16px;
+    color: rgb(248, 113, 113);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 0 6px rgb(0, 0, 0);
+}
+
+/* ---- Button (h-10 px-4 py-2 border-2 text-xs font-semibold tracking-widest) ---- */
+
+.menu-root .card-footer {
+    flex-direction: row;
+    justify-content: center;
+}
+
+.menu-root .menu-button.unity-button {
+    height: 40px;
+    margin: 0;
+    padding: 8px 16px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0);
+    color: rgb(255, 255, 255);
+    font-size: 12px;
+    -unity-font-style: bold;
+    letter-spacing: 1.2px;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}

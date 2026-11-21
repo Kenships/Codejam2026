@@ -179,6 +179,7 @@ MonoBehaviour:
   mergeMaxStretch: 1.05
   mergeUnsquashDuration: 0.25
   mergeFuseOffset: 0.05
+  mergeOverlapTimeout: 1.5
   mergeSpawnSquash: 0.1
   mergeSpawnDuration: 0.35
   mergeSpawnOvershoot: 1
@@ -249,8 +250,8 @@ MonoBehaviour:
   colorCount: 4
   saturation: 1
   value: 1
-  totalArea: 100
-  minUnitArea: 0.3
+  totalArea: 30
+  minUnitArea: 0.6
   maxUnitArea: 1.5
   mergeDelay: 2
   useSeed: 0
