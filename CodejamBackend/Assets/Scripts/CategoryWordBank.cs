@@ -12,23 +12,51 @@ public static class CategoryWordBank
 
     public static readonly string[] Categories =
     {
-        "Animals", "Food", "Drinks", "Fruits", "Vegetables", "Desserts", "Snacks", "Fast Food",
-        "Restaurants", "Clothing", "Shoes", "Accessories", "Colours", "Shapes", "Numbers",
-        "Body Parts", "Emotions", "Personality Traits", "Jobs", "Hobbies", "Sports", "Board Games",
-        "Video Games", "Toys", "Musical Instruments", "Music Genres", "Movies", "TV Shows", "Books",
-        "Cartoons", "Celebrities", "Superheroes", "Villains", "Fictional Characters",
-        "Mythical Creatures", "Places", "Countries", "Cities", "Landmarks", "Tourist Attractions",
-        "Buildings", "Rooms", "Furniture", "Household Items", "Kitchen Items", "Bathroom Items",
-        "School Supplies", "Office Supplies", "Electronics", "Technology", "Websites",
-        "Social Media", "Apps", "Vehicles", "Public Transportation", "Tools", "Machines", "Weapons",
-        "Materials", "Metals", "Gems", "Plants", "Flowers", "Trees", "Insects", "Birds",
-        "Sea Creatures", "Reptiles", "Dinosaurs", "Pets", "Weather", "Seasons", "Natural Disasters",
-        "Landforms", "Bodies of Water", "Space", "Planets", "Science", "School Subjects",
-        "Languages", "Holidays", "Celebrations", "Traditions", "Historical Events", "Time Periods",
-        "Professions", "Businesses", "Stores", "Brands", "Products", "Currencies", "Activities",
-        "Chores", "Outdoor Activities", "Indoor Activities", "Vacation Activities",
+        // Every entry should be something concrete you can sketch on a phone in ~30 seconds.
+        // Keep entries <= SuggestionMaxLength so they fit the same UI as player suggestions.
+
+        // Animals & nature
+        "Animals", "Pets", "Farm Animals", "Jungle Animals", "Sea Creatures", "Birds", "Insects",
+        "Reptiles", "Dinosaurs", "Mythical Creatures", "Plants", "Flowers", "Trees", "Fruits",
+        "Vegetables", "Weather", "Seasons", "Natural Disasters", "Landforms", "Bodies of Water",
+        "Space", "Planets", "Gems", "Things in the Sky", "Things in a Garden", "Things in a Forest",
+
+        // Food & drink
+        "Food", "Drinks", "Desserts", "Snacks", "Fast Food", "Breakfast Foods", "Pizza Toppings",
+        "Sandwiches", "Candy", "Ice Cream Treats", "Baked Goods", "Soups", "Picnic Food",
+
+        // People & characters
+        "Body Parts", "Facial Expressions", "Jobs", "Superheroes", "Villains", "Monsters",
+        "Robots", "Aliens", "Pirates", "Knights & Castles", "Fairy Tales", "Wizards & Magic",
+
+        // Things you wear
+        "Clothing", "Shoes", "Hats", "Accessories", "Costumes", "Jewelry",
+
+        // Things around the house
+        "Furniture", "Rooms", "Household Items", "Kitchen Items", "Kitchen Appliances",
+        "Bathroom Items", "Things in a Bedroom", "Things in a Garage", "Garden Tools", "Tools",
+        "Electronics", "School Supplies", "Office Supplies",
+
+        // Getting around
+        "Vehicles", "Things with Wheels", "Things That Fly", "Boats", "Public Transportation",
+
+        // Places & buildings
+        "Buildings", "Landmarks", "Things in a City", "Playground Equipment",
+
+        // Fun & games
+        "Sports", "Sports Equipment", "Hobbies", "Toys", "Board Games", "Musical Instruments",
+        "Camping Gear", "Party Supplies", "Holidays", "Halloween", "Winter Things",
+        "Summer Things", "Chores",
+
+        // Things at / in a place
         "Things at a Party", "Things at the Beach", "Things at School", "Things in a Hospital",
-        "Things in a Kitchen"
+        "Things at a Zoo", "Things at a Carnival", "Things at a Farm", "Things at a Circus",
+        "Things in a Kitchen", "Things on a Pirate Ship", "Things Underwater",
+
+        // Descriptive
+        "Shapes", "Things That Are Round", "Things That Are Tiny", "Things That Are Huge",
+        "Things That Glow", "Things That Are Hot", "Things That Are Cold", "Things That Are Sharp",
+        "Things That Are Squishy", "Things That Bounce", "Things That Make Noise", "Things That Melt"
     };
 
     /// <summary>Longest suggestion accepted (matches the frontend's PROMPT_SUGGESTION_MAX_LENGTH).</summary>
