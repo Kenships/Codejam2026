@@ -137,8 +137,14 @@ public class ColorPhysics : MonoBehaviour
     // Distance from the origin new bodies spawn at (random direction)
     [SerializeField, Min(0f)] private float spawnDistance = 5f;
 
-    // Delay between spawns when working through a SpawnQueue (seconds)
-    [SerializeField, Min(0.01f)] private float spawnInterval = 0.15f;
+    [Tooltip("Every cube in a SpawnQueue appears within this many seconds, however many there " +
+             "are: the gap between spawns shrinks as the count grows (several per frame if needed).")]
+    [SerializeField, Min(0f)] private float spawnWindowSeconds = 2f;
+
+    [Tooltip("Longest gap between two spawns, so a handful of cubes doesn't trickle in across " +
+             "the whole window.")]
+    [FormerlySerializedAs("spawnInterval")]
+    [SerializeField, Min(0.01f)] private float maxSpawnInterval = 0.15f;
 
     [Title("Squash All")]
     // Delay between starting merges (seconds)
@@ -253,6 +259,8 @@ public class ColorPhysics : MonoBehaviour
 
     private readonly Queue<(Color color, float radius)> _spawnQueue = new();
     private Coroutine _spawnRoutine;
+    // Gap between spawns for what's queued now (see SpawnIntervalFor)
+    private float _spawnInterval;
 
     #endregion
 
@@ -1602,10 +1610,11 @@ public class ColorPhysics : MonoBehaviour
     }
 
     /// <summary>
-    /// Spawns one body per (color, radius) config, one every spawnInterval
-    /// seconds, until all have been spawned. The given queue is drained
-    /// into an internal one, so calling this again while spawning just
-    /// appends to the line instead of starting a second spawner.
+    /// Spawns one body per (color, radius) config, spread evenly so they all
+    /// appear within spawnWindowSeconds (but no slower than maxSpawnInterval).
+    /// The given queue is drained into an internal one, so calling this again
+    /// while spawning appends to the line; whatever is still waiting then gets
+    /// a fresh window.
     /// </summary>
     public void SpawnQueue(Queue<(Color color, float radius)> configs)
     {
@@ -1627,6 +1636,7 @@ public class ColorPhysics : MonoBehaviour
             return;
         }
 
+        _spawnInterval = SpawnIntervalFor(_spawnQueue.Count);
         _spawnRoutine ??= StartCoroutine(SpawnQueueRoutine());
     }
 
@@ -1634,18 +1644,28 @@ public class ColorPhysics : MonoBehaviour
 
     public bool IsSquashing => _squashAllRoutine != null;
 
+    /// <summary>Seconds from the first spawn to the last for this many queued bodies.</summary>
+    public float SpawnDurationFor(int count) => Mathf.Max(0, count - 1) * SpawnIntervalFor(count);
+
+    private float SpawnIntervalFor(int count) =>
+        count <= 1 ? 0f : Mathf.Min(maxSpawnInterval, spawnWindowSeconds / (count - 1));
+
     private IEnumerator SpawnQueueRoutine()
     {
-        WaitForSeconds wait = new(spawnInterval);
+        float nextSpawnAt = Time.time;
 
         while (_spawnQueue.Count > 0)
         {
-            (Color color, float radius) = _spawnQueue.Dequeue();
-            SpawnBody(color, radius);
+            // Everything that's due, so short gaps still keep the window at high counts
+            while (_spawnQueue.Count > 0 && Time.time >= nextSpawnAt)
+            {
+                (Color color, float radius) = _spawnQueue.Dequeue();
+                SpawnBody(color, radius);
+                nextSpawnAt += _spawnInterval;
+            }
 
-            // No wait after the last one
             if (_spawnQueue.Count > 0)
-                yield return wait;
+                yield return null;
         }
 
         _spawnRoutine = null;

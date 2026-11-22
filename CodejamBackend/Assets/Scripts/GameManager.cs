@@ -74,9 +74,17 @@ public class GameManager : Singleton<GameManager>
     // Total circle area shared evenly between all guessed colours in a round
     [SerializeField, Min(0.01f)] private float totalArea = 30f;
 
-    // Bounds on the area of each spawned piece
-    [SerializeField, Min(0.001f)] private float minUnitArea = 0.6f;
-    [SerializeField, Min(0.001f)] private float maxUnitArea = 1.5f;
+    // Piece sizes are derived from these so the screen never gets cluttered: few
+    // guessers -> a few big pieces each, many guessers -> smaller pieces, total capped.
+    [Tooltip("Most cubes spawned for one merge. Only exceeded when needed to give every " +
+             "guessed colour Min Cubes Per Color.")]
+    [SerializeField, Min(1)] private int maxCubesOnScreen = 32;
+
+    [Tooltip("Every guessed colour gets at least this many cubes, however many players there are.")]
+    [SerializeField, Min(1)] private int minCubesPerColor = 2;
+
+    [Tooltip("Most cubes one colour can get (with few players). Lower = bigger cubes.")]
+    [SerializeField, Min(1)] private int maxCubesPerColor = 6;
 
     [Title("Sequence")]
     // Pause after the last body spawns before everything starts merging
@@ -470,7 +478,7 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
-    /// Records a player's colour guess and immediately spawns their guessed colour as cubes in ColorPhysics.
+    /// Records a player's colour guess. Its cubes are spawned with everyone else's when the round ends.
     /// </summary>
     public void OnPlayerGuessSubmitted(string playerId, Color guessedColor)
     {
@@ -496,27 +504,24 @@ public class GameManager : Singleton<GameManager>
         _currentRoundPoints[playerId] = HueScoring.GuessPoints(
             deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
 
+        // Cubes stay hidden until the round ends (see MergeAndRevealRoutine)
         int expectedGuessers = GetExpectedGuesserCount(currentDrawing.playerId);
-        SpawnGuessedColorCubes(guessedColor, expectedGuessers);
-
         guessingPhaseUI?.SetGuessProgress(_currentRoundGuesses.Count, expectedGuessers);
     }
 
-    private void SpawnGuessedColorCubes(Color guessedColor, int expectedGuessers)
+    /// <summary>
+    /// Splits totalArea evenly between the colours, partitions each share into pieces
+    /// sized so the cube count stays bounded, and spawns them all in one shuffled queue.
+    /// </summary>
+    private void SpawnPartitionedCubes(List<Color> colors, ColorPartitionService partitionService)
     {
-        if (colorPhysics == null)
+        if (colorPhysics == null || colors.Count == 0)
             return;
 
-        float shareArea = totalArea / Mathf.Max(1, expectedGuessers);
-        ColorPartitionService partitionService = new();
-        Queue<(Color color, float radius)> pieces = partitionService.CreateSpawnQueue(
-            new List<Color> { guessedColor },
-            shareArea,
-            minUnitArea,
-            maxUnitArea
-        );
+        (float minArea, float maxArea) = ColorPartitionService.GetUnitAreaRange(
+            colors.Count, totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
 
-        colorPhysics.SpawnQueue(pieces);
+        colorPhysics.SpawnQueue(partitionService.CreateSpawnQueue(colors, totalArea, minArea, maxArea));
     }
 
     /// <summary>
@@ -574,13 +579,14 @@ public class GameManager : Singleton<GameManager>
     {
         GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
 
-        // If nobody guessed before time ran out, spawn a neutral fallback cube so merge still resolves
-        if (colorPhysics != null && colorPhysics.Bodies.Count == 0 && !colorPhysics.IsSpawning)
-        {
-            colorPhysics.SpawnBody(new Color(0.5f, 0.5f, 0.5f, 1f), 0.7f);
-        }
+        // Everyone's guesses appear together now, shuffled. If nobody guessed before time ran
+        // out, a neutral grey stands in so the merge still resolves.
+        List<Color> roundColors = new(_currentRoundGuesses.Values);
+        if (roundColors.Count == 0)
+            roundColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
 
-        // Wait for any remaining queued guess cubes to finish spawning
+        SpawnPartitionedCubes(roundColors, new ColorPartitionService());
+
         while (colorPhysics != null && colorPhysics.IsSpawning)
             yield return null;
 
@@ -1178,7 +1184,14 @@ public class GameManager : Singleton<GameManager>
     /// spawn every partitioned piece, wait mergeDelay, merge them all.
     /// </summary>
     [Button]
-    public void GenerateAndSpawn()
+    public void GenerateAndSpawn() =>
+        GenerateAndSpawn(GameSessionData.Players.Count > 0 ? GameSessionData.Players.Count : colorCount);
+
+    /// <summary>
+    /// Same as the end of a guessing round with <paramref name="count"/> guesses: partitions,
+    /// spawns (within ColorPhysics' spawn window) and merges. Used by the layout test scene.
+    /// </summary>
+    public void GenerateAndSpawn(int count)
     {
         if (!Application.isPlaying)
         {
@@ -1196,29 +1209,23 @@ public class GameManager : Singleton<GameManager>
             ? new System.Random(seed)
             : new System.Random();
 
-        int count = GameSessionData.Players.Count > 0 ? GameSessionData.Players.Count : colorCount;
-        List<Color> colors = GenerateDistinctColors(count, random);
+        StopActiveRoutines();
+        colorPhysics.gameObject.SetActive(true);
+        colorPhysics.ClearAllBodies();
+
+        List<Color> colors = GenerateDistinctColors(Mathf.Max(1, count), random);
 
         ColorPartitionService partitionService = new(random.Next());
-
-        Queue<(Color color, float radius)> spawnQueue =
-            partitionService.CreateSpawnQueue(
-                colors,
-                totalArea,
-                minUnitArea,
-                maxUnitArea
-            );
 
         if (_sequenceRoutine != null)
             StopCoroutine(_sequenceRoutine);
 
-        _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(spawnQueue));
+        _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(colors, partitionService));
     }
 
-    private IEnumerator SpawnThenMergeRoutine(
-        Queue<(Color color, float radius)> spawnQueue)
+    private IEnumerator SpawnThenMergeRoutine(List<Color> colors, ColorPartitionService partitionService)
     {
-        colorPhysics.SpawnQueue(spawnQueue);
+        SpawnPartitionedCubes(colors, partitionService);
 
         while (colorPhysics.IsSpawning)
             yield return null;
