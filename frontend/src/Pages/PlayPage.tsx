@@ -26,6 +26,7 @@ export type GamePhase =
   | 'playing'
   | 'playing_done'
   | 'results'
+  | 'results_artist'
   | 'finished'
 
 const DEV_GAME_PHASES: GamePhase[] = [
@@ -35,6 +36,7 @@ const DEV_GAME_PHASES: GamePhase[] = [
   'playing',
   'playing_done',
   'results',
+  'results_artist',
   'finished',
 ]
 const DEV_CONNECTION_STATUSES: ConnectionStatus[] = [
@@ -181,7 +183,19 @@ export function PlayPage() {
         setGamePhase('playing')
       } else if (d.t === 'results') {
         // When results are revealed on the host screen, update roundResult and jump to results phase
-        if (typeof d.targetHex === 'string' || typeof d.hex === 'string') {
+        const myPlayerId = useLoginStore.getState().playerId
+        const isArtist =
+          d.isArtist === true ||
+          (typeof d.artistId === 'string' &&
+            myPlayerId !== null &&
+            d.artistId === myPlayerId)
+
+        if (
+          typeof d.targetHex === 'string' ||
+          typeof d.hex === 'string' ||
+          typeof d.isArtist === 'boolean' ||
+          typeof d.artistId === 'string'
+        ) {
           setRoundResult((prev) => ({
             roundPoints:
               typeof d.roundPoints === 'number'
@@ -209,9 +223,10 @@ export function PlayPage() {
                 : typeof d.hex === 'string'
                   ? d.hex
                   : (prev?.targetHex ?? '#ffffff'),
+            isArtist,
           }))
         }
-        setGamePhase('results')
+        setGamePhase(isArtist ? 'results_artist' : 'results')
       } else if (
         d.t === 'state' &&
         (d.phase === 'waiting' ||
@@ -262,7 +277,8 @@ export function PlayPage() {
     activePhase === 'drawing_done' ||
     activePhase === 'finished'
       ? waitingColor
-      : activePhase === 'results' && roundResult
+      : (activePhase === 'results' || activePhase === 'results_artist') &&
+          roundResult
         ? roundResult.targetHex
         : activePhase === 'drawing'
           ? drawingTargetHex
@@ -419,10 +435,19 @@ export function PlayPage() {
         )
 
       case 'results':
+      case 'results_artist':
         return roundResult ? (
           <RoundResultsCard
             username={username}
-            result={roundResult}
+            result={{
+              ...roundResult,
+              isArtist:
+                activePhase === 'results_artist'
+                  ? true
+                  : activePhase === 'results' && DEV_MOCK_MODE
+                    ? false
+                    : roundResult.isArtist,
+            }}
             pickedHex={pickedColor}
           />
         ) : null

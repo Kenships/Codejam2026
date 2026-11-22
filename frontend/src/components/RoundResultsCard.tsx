@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { Palette } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -8,6 +9,7 @@ import {
 } from '@/components/ui/card'
 import {
   formatOrdinal,
+  getArtistResultText,
   getResultText,
   type PlayerRoundResult,
 } from '@/lib/results'
@@ -23,28 +25,48 @@ export function RoundResultsCard({
   result,
   pickedHex,
 }: RoundResultsCardProps) {
-  const { roundPoints, totalPoints, roundRank, overallRank, totalPlayers } =
-    result
+  const {
+    roundPoints,
+    totalPoints,
+    roundRank,
+    overallRank,
+    totalPlayers,
+    targetHex,
+    isArtist = false,
+  } = result
 
   const formatRank = (rank: number) =>
     totalPlayers
       ? `${formatOrdinal(rank)} / ${totalPlayers}`
       : formatOrdinal(rank)
 
-  const resultLabel = getResultText(roundPoints)
+  const resultLabel = isArtist
+    ? getArtistResultText(roundPoints)
+    : getResultText(roundPoints)
+
+  // Artist didn't guess a separate colour, so use their targetHex; guessers see their pickedHex
+  const textHex = isArtist ? targetHex : pickedHex
 
   return (
     <Card
       className="w-full select-none bg-black/80 ring-0 border-2 border-(--hue) font-jersey text-(--picked)"
-      style={{ '--picked': pickedHex } as CSSProperties}
+      style={{ '--picked': textHex } as CSSProperties}
     >
       <CardHeader className="pb-2">
+        {isArtist && (
+          <div className="mb-1 flex justify-center">
+            <span className="inline-flex items-center gap-1.5 border-2 border-(--hue) bg-black/70 px-3 py-0.5 text-xs uppercase tracking-widest text-(--hue)">
+              <Palette className="h-3.5 w-3.5" />
+              Your Drawing&apos;s Round
+            </span>
+          </div>
+        )}
         <CardTitle className="font-jersey sm:text-4xl text-3xl text-center text-(--picked) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
           {resultLabel}
         </CardTitle>
         {username && (
           <CardDescription className="font-jersey text-center sm:text-base text-sm text-(--picked)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-            {username}
+            {isArtist ? `Artist: ${username}` : username}
           </CardDescription>
         )}
       </CardHeader>
@@ -53,7 +75,7 @@ export function RoundResultsCard({
         <div className="grid grid-cols-2 divide-x-2 divide-(--hue)/40 rounded border-2 border-(--hue) bg-black/60 py-4 text-center">
           <div className="flex flex-col items-center px-3">
             <span className="text-xs uppercase tracking-wider text-(--picked)/70">
-              Round Points
+              {isArtist ? 'Artist Points' : 'Round Points'}
             </span>
             <span className="text-3xl sm:text-4xl font-semibold tabular-nums text-(--picked)">
               +{roundPoints.toLocaleString()}
