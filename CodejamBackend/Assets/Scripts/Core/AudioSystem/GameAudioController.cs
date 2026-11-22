@@ -51,19 +51,8 @@ namespace Core.AudioSystem
             return go.AddComponent<GameAudioController>();
         }
 
-        private void Reset() => AutoAssignDefaultClips();
-
-        private void OnValidate() => AutoAssignDefaultClips();
-
-        protected override void Awake()
-        {
-            base.Awake();
-
-            if (Instance != this)
-                return;
-
-            AutoAssignDefaultClips();
-        }
+        // Clips are assigned on the GameAudioController object in Menu and GameScene.
+        // The first one loaded persists across scenes; the other destroys itself.
 
         private void Start()
         {
@@ -72,32 +61,6 @@ namespace Core.AudioSystem
 
             if (playMusicOnStart)
                 StartBackgroundMusic();
-        }
-
-        private void AutoAssignDefaultClips()
-        {
-#if UNITY_EDITOR
-            if (backgroundMusic == null)
-                backgroundMusic = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/BackgroundMusic.mp3");
-
-            if (clickButton == null)
-                clickButton = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/ClickButton.mp3");
-
-            if (joinSound == null)
-                joinSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/JoinSound.mp3");
-
-            if (bubbleMerge == null)
-                bubbleMerge = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/BubbleMerge.mp3");
-
-            if (goodGuess == null)
-                goodGuess = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/GoodGuess.mp3");
-
-            if (mediocreGuess == null)
-                mediocreGuess = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/MediocreGuess.mp3");
-
-            if (loseSound == null)
-                loseSound = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Media/LoseSound.mp3");
-#endif
         }
 
         /// <summary>Starts persistent looping background music on AudioType.Music if not already playing.</summary>

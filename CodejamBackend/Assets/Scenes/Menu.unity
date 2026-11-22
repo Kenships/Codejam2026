@@ -624,10 +624,66 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aacad0abd9ec407b9f39eac7c7044a74, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Codejam.Networking.RelayDebugHUD
-  show: 1
+  show: 0
   relay: {fileID: 1730000003}
   avatars: {fileID: 1730000004}
   avatarSize: 48
+--- !u!1 &1830000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1830000002}
+  - component: {fileID: 1830000003}
+  m_Layer: 0
+  m_Name: GameAudioController
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1830000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1830000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1830000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1830000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bfde03d75a8c35469963204a4131158, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Core.AudioSystem.GameAudioController
+  dontDestroyOnLoad: 1
+  backgroundMusic: {fileID: 8300000, guid: 6afa52c8a186e534a8dd3370a9851b1e, type: 3}
+  musicVolume: 0.5
+  playMusicOnStart: 1
+  clickButton: {fileID: 8300000, guid: cc5170f3d7b69444ea427067dde2c8fb, type: 3}
+  joinSound: {fileID: 8300000, guid: e3ef3da170d931c43a8b329375fc9577, type: 3}
+  bubbleMerge: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
+  goodGuess: {fileID: 8300000, guid: 9684d6791268d89418f03b80190dfb46, type: 3}
+  mediocreGuess: {fileID: 8300000, guid: 4dc1ee6eb8a0562408344f0c6aeb0103, type: 3}
+  loseSound: {fileID: 8300000, guid: d7ed7340bf6d6ef43a5b5db18e5633f4, type: 3}
+  goodGuessThreshold: 0.85
+  mediocreGuessThreshold: 0.5
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -637,3 +693,4 @@ SceneRoots:
   - {fileID: 820417304}
   - {fileID: 1150985446}
   - {fileID: 1730000002}
+  - {fileID: 1830000002}
