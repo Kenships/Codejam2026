@@ -1267,7 +1267,9 @@ public class GameManager : Singleton<GameManager>
                 if (_currentDrawingIndex < GameSessionData.Drawings.Count)
                 {
                     GameSessionData.SubmittedDrawing drawing = GameSessionData.Drawings[_currentDrawingIndex];
-                    if (drawing.playerId != playerId && !_currentRoundGuesses.ContainsKey(playerId))
+                    if (drawing.playerId == playerId)
+                        relay.SendPhaseStateTo(playerId, "playing", _currentDrawingIndex + 1, remainingMs);
+                    else if (!_currentRoundGuesses.ContainsKey(playerId))
                         relay.SendRoundDrawingTo(playerId, drawing, _currentDrawingIndex + 1, remainingMs);
                 }
                 break;

@@ -27,6 +27,7 @@ export type GamePhase =
   | 'waiting'
   | 'drawing'
   | 'drawing_done'
+  | 'artist_guessing'
   | 'playing'
   | 'playing_done'
   | 'results'
@@ -45,6 +46,7 @@ const DEV_GAME_PHASES: GamePhase[] = [
   'waiting',
   'drawing',
   'drawing_done',
+  'artist_guessing',
   'playing',
   'playing_done',
   'results',
@@ -158,13 +160,15 @@ export function PlayPage() {
   // Drawing countdown deadline (derived from state.remainingMs minus catch-up ageMs)
   const [drawingDeadlineMs, setDrawingDeadlineMs] = useState<number | null>(null)
   const [drawingDurationSec, setDrawingDurationSec] = useState<number>(60)
-  // Tracks whether the drawing phase timer has ended while on drawing_done (artist's art is now being guessed)
-  const [drawingTimerEnded, setDrawingTimerEnded] = useState(false)
-  // Tracks whether this phone received a drawing to guess in the current round;
-  // Unity skips sending round_drawing / state:"playing" to the artist, so false => we are the artist!
+  // Tracks whether `round_drawing` arrived right before `state:"playing"` (true = guesser, false = artist of this round)
+  const receivedRoundDrawingRef = useRef(false)
+  // Tracks whether this phone was a guesser in the current round; false => we are the artist of this round
   const wasGuesserThisRoundRef = useRef(false)
   // Compressed drawing received from the relay/host for the `playing` (guessing) phase
   const [incomingDrawing, setIncomingDrawing] =
+    useState<IncomingRoundDrawing | null>(null)
+  // This player's own submitted drawing, preserved across rounds for the `artist_guessing` screen
+  const [mySubmittedDrawing, setMySubmittedDrawing] =
     useState<IncomingRoundDrawing | null>(null)
 
   // Seed a real GZIP-compressed mock drawing in DEV_MOCK_MODE so `playing` can be tested immediately
@@ -234,6 +238,7 @@ export function PlayPage() {
         (d.t === 'round_drawing' || d.t === 'drawing_submit') &&
         typeof d.image === 'string'
       ) {
+        receivedRoundDrawingRef.current = true
         wasGuesserThisRoundRef.current = true
         setGuessHue(null)
         setIncomingDrawing({
@@ -245,7 +250,7 @@ export function PlayPage() {
         setGamePhase('playing')
       } else if (d.t === 'results') {
         // When results are revealed on the host screen, update roundResult and jump to results phase.
-        // Unity does not send round_drawing / state:"playing" to the artist, so !wasGuesserThisRoundRef
+        // Unity does not send round_drawing to the artist, so !wasGuesserThisRoundRef
         // reliably identifies the artist even when the host payload omits isArtist / artistId.
         const myPlayerId = useLoginStore.getState().playerId
         const isArtist =
@@ -255,6 +260,7 @@ export function PlayPage() {
             d.artistId === myPlayerId) ||
           !wasGuesserThisRoundRef.current
 
+        receivedRoundDrawingRef.current = false
         wasGuesserThisRoundRef.current = false
 
         if (
@@ -305,8 +311,8 @@ export function PlayPage() {
       ) {
         const nextPhase = d.phase
         if (nextPhase === 'drawing') {
+          receivedRoundDrawingRef.current = false
           wasGuesserThisRoundRef.current = false
-          setDrawingTimerEnded(false)
           if (remainingMs !== undefined) {
             setDrawingDeadlineMs(Date.now() + remainingMs)
             if (rawRemainingMs !== undefined && rawRemainingMs > 0) {
@@ -314,30 +320,40 @@ export function PlayPage() {
               setDrawingDurationSec((prev) => Math.max(prev, totalSec))
             }
           }
+          if (typeof d.remainingMs === 'number') {
+            // A catch-up replay is ageMs old; never start below 1 s
+            const adjustedRemainingMs = d.remainingMs - (ageMs ?? 0)
+            setDrawingDurationSec(Math.max(1, Math.round(adjustedRemainingMs / 1000)))
+          }
+          setGamePhase('drawing')
         } else {
           setDrawingTarget(null)
           setDrawingDeadlineMs(null)
           setDrawingDurationSec(60)
-          setDrawingTimerEnded(false)
           if (nextPhase === 'playing') {
-            wasGuesserThisRoundRef.current = true
-            setGuessHue(null)
-          } else if (nextPhase === 'waiting' || nextPhase === 'finished') {
+            // Guessers receive `round_drawing` right before `state:"playing"`.
+            // The artist of the round receives `state:"playing"` WITHOUT `round_drawing`.
+            if (receivedRoundDrawingRef.current) {
+              receivedRoundDrawingRef.current = false
+              wasGuesserThisRoundRef.current = true
+              setGuessHue(null)
+              setGamePhase('playing')
+            } else {
+              wasGuesserThisRoundRef.current = false
+              setGamePhase('artist_guessing')
+            }
+          } else if (nextPhase === 'results') {
+            // Unity sends state:"results" right after the per-player `results` message;
+            // preserve 'results_artist' so the artist's special card isn't overwritten.
+            setGamePhase((prev) =>
+              prev === 'results_artist' ? 'results_artist' : 'results'
+            )
+          } else {
+            receivedRoundDrawingRef.current = false
             wasGuesserThisRoundRef.current = false
+            setGamePhase(nextPhase)
           }
         }
-        if (nextPhase === 'drawing' && typeof d.remainingMs === 'number') {
-          // A catch-up replay is ageMs old; never start below 1 s
-          const adjustedRemainingMs = d.remainingMs - (ageMs ?? 0)
-          setDrawingDurationSec(Math.max(1, Math.round(adjustedRemainingMs / 1000)))
-        }
-        // Unity sends state:"results" right after the per-player `results` message;
-        // preserve 'results_artist' so the artist's special card isn't overwritten.
-        setGamePhase((prev) =>
-          nextPhase === 'results' && prev === 'results_artist'
-            ? 'results_artist'
-            : nextPhase
-        )
       }
     })
   }, [])
@@ -352,7 +368,7 @@ export function PlayPage() {
 
     const msLeft = drawingDeadlineMs - Date.now()
     const timerId = window.setTimeout(
-      () => setDrawingTimerEnded(true),
+      () => setGamePhase('artist_guessing'),
       Math.max(0, msLeft)
     )
     return () => window.clearTimeout(timerId)
@@ -362,6 +378,7 @@ export function PlayPage() {
   const isWaitingScreen =
     activePhase === 'waiting' ||
     activePhase === 'drawing_done' ||
+    activePhase === 'artist_guessing' ||
     activePhase === 'finished' ||
     isDrawingWaiting
 
@@ -561,13 +578,14 @@ export function PlayPage() {
             durationSec={drawingDurationSec}
             deadlineMs={drawingDeadlineMs}
             onSubmit={(sub) => {
-              // Feed the compressed drawing into local state and transition to the spinning waiting state
-              setIncomingDrawing({
+              const submittedDrawing: IncomingRoundDrawing = {
                 imageBase64: sub.imageBase64,
                 mime: sub.mime,
                 prompt: sub.prompt,
                 artistName: username || 'You',
-              })
+              }
+              setMySubmittedDrawing(submittedDrawing)
+              setIncomingDrawing(submittedDrawing)
               setGamePhase('drawing_done')
             }}
           />
@@ -580,20 +598,10 @@ export function PlayPage() {
               <div className="flex flex-col gap-2 p-2">
                 <CardHeader>
                   <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
-                    {drawingTimerEnded ? 'Your Art Is Up!' : 'Drawing Submitted!'}
+                    Drawing Submitted!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    {drawingTimerEnded ? (
-                      <>
-                        Waiting for other players to guess your art
-                        <BouncingDots />
-                      </>
-                    ) : (
-                      <>
-                        Waiting for other players to finish drawing
-                        <BouncingDots />
-                      </>
-                    )}
+                    Waiting for other players to finish drawing<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
@@ -612,7 +620,45 @@ export function PlayPage() {
                   {/* key: each screen starts on its own tab instead of inheriting the last screen's */}
                   <TutorialTabs key="drawing" label="Your Drawing">
                     <DrawingViewport
-                      drawing={incomingDrawing}
+                      drawing={mySubmittedDrawing ?? incomingDrawing}
+                      color={waitingColor}
+                    />
+                  </TutorialTabs>
+                </CardContent>
+              </div>
+            </Card>
+          </SquareHueSlider>
+        )
+
+      case 'artist_guessing':
+        return (
+          <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
+              <div className="flex flex-col gap-2 p-2">
+                <CardHeader>
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+                    People Are Guessing Your Art
+                  </CardTitle>
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                    Hang tight while everyone guesses your colour<BouncingDots />
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                    {room && (
+                      <p className="text-base sm:text-lg tracking-wider uppercase">
+                        Room: <span className="font-semibold">{room}</span>
+                      </p>
+                    )}
+                    {username && (
+                      <p className="text-base text-(--hue)/80">
+                        Joined as {username}
+                      </p>
+                    )}
+                  </div>
+                  <TutorialTabs key="artist-guessing" label="Your Drawing">
+                    <DrawingViewport
+                      drawing={mySubmittedDrawing ?? incomingDrawing}
                       color={waitingColor}
                     />
                   </TutorialTabs>

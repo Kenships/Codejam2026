@@ -316,8 +316,13 @@ namespace Codejam.Networking
             for (int i = 0; i < players.Count; i++)
             {
                 GameSessionData.SessionPlayer p = players[i];
-                if (p != null && p.playerId != drawing.playerId)
+                if (p == null)
+                    continue;
+
+                if (p.playerId != drawing.playerId)
                     SendRoundDrawingTo(p.playerId, drawing, round, remainingMs);
+                else
+                    SendPhaseStateTo(p.playerId, "playing", round, remainingMs);
             }
         }
 
