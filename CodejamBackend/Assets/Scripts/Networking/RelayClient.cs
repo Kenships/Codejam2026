@@ -104,7 +104,7 @@ namespace Codejam.Networking
         public event Action<RelayPlayer> PlayerRejoined;
         public event Action<RelayPlayer> PlayerDisconnected;
 
-        /// <summary>Seat released for good. Reason: "timeout" or "kicked".</summary>
+        /// <summary>Seat released for good. Reason: "timeout", "kicked", or "left" (the phone left on purpose).</summary>
         public event Action<RelayPlayer, string> PlayerLeft;
 
         /// <summary>

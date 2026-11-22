@@ -58,6 +58,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `send` | Anyone in a room | `to: Target`, `d: object` | *(none — forwarded)* |
 | `grant_broadcast` | Host | `playerId: string \| null` | *(none)* |
 | `kick` | Host | `playerId: string` | *(none — host gets `player_left`)* |
+| `leave` | Player | — | *(none — host gets `player_left {reason:"left"}`)* |
 
 `Target` is one of:
 
@@ -90,6 +91,9 @@ trying to create/join again is rejected with `already_in_room`.
   the original join; the `name` field is ignored). If that seat still has a live socket, the old
   socket is closed with code `4002` (replaced) — this handles "opened the game in a second tab".
 - `join` with an unknown/expired `playerId` → treated as a new join.
+- A dropped player's seat (and **name**) is held for the grace period (§5), so a *new* join with
+  that name gets `name_taken` until it expires. A player leaving on purpose should send `leave`
+  before closing: the seat and name are freed at once and the socket's close is ignored.
 
 ---
 
@@ -104,7 +108,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `player_joined` | Host | `playerId`, `name` | New player took a seat |
 | `player_rejoined` | Host | `playerId`, `name` | Player reconnected to their seat |
 | `player_disconnected` | Host | `playerId` | Player's socket dropped; seat is held for 30 s |
-| `player_left` | Host | `playerId`, `reason: "timeout" \| "kicked"` | Seat released for good |
+| `player_left` | Host | `playerId`, `reason: "timeout" \| "kicked" \| "left"` | Seat released for good |
 | `host_lost` | Players | — | Host socket dropped; room held for 60 s |
 | `host_back` | Players | — | Host resumed |
 | `room_closed` | Everyone | `reason: "host_timeout" \| "idle" \| "server_shutdown"` | Room is gone; socket closes next |
@@ -121,7 +125,7 @@ ignored, so a phone can never impersonate the host or another player.
 |---|---|
 | `bad_json` | Frame was not valid JSON, or not a JSON object |
 | `bad_message` | Unknown `t`, or required fields missing / wrong type |
-| `not_in_room` | `send`/`grant_broadcast`/`kick` before creating or joining |
+| `not_in_room` | `send`/`grant_broadcast`/`kick`/`leave` before creating or joining |
 | `already_in_room` | `host_create`/`host_resume`/`join` on a socket that already has an identity |
 | `room_not_found` | No room with that code |
 | `room_full` | Room already has 12 players |

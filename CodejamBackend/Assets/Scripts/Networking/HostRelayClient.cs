@@ -56,7 +56,7 @@ namespace Codejam.Networking
         /// <summary>Argument: player id. Their seat is held for 30 s.</summary>
         public event Action<string> PlayerDisconnected;
 
-        /// <summary>Arguments: player id, reason ("timeout" or "kicked").</summary>
+        /// <summary>Arguments: player id, reason ("timeout", "kicked", or "left" when the phone left on purpose).</summary>
         public event Action<string, string> PlayerLeft;
 
         /// <summary>

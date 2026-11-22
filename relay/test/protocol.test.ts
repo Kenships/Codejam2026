@@ -81,6 +81,11 @@ describe("parseClientMessage: message types", () => {
         assert.equal(fails('{"t":"grant_broadcast"}'), "bad_message");
     });
 
+    test("leave (extra fields dropped)", () => {
+        assert.deepEqual(ok('{"t":"leave"}'), { t: "leave" });
+        assert.deepEqual(ok('{"t":"leave","playerId":"p1"}'), { t: "leave" });
+    });
+
     test("kick", () => {
         assert.deepEqual(ok('{"t":"kick","playerId":"p1"}'), { t: "kick", playerId: "p1" });
         assert.equal(fails('{"t":"kick"}'), "bad_message");

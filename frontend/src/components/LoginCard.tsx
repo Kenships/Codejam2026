@@ -31,6 +31,7 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
   const room = useLoginStore((s) => s.room)
   const playerId = useLoginStore((s) => s.playerId)
   const sessionRoom = useLoginStore((s) => s.sessionRoom)
+  const sessionName = useLoginStore((s) => s.sessionName)
   const setUsername = useLoginStore((s) => s.setUsername)
   const setRoom = useLoginStore((s) => s.setRoom)
 
@@ -71,8 +72,18 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
 
     try {
       // Only send saved playerId when rejoining the same room (PROTOCOL.md §3 & §8)
-      const existingPlayerId =
-        sessionRoom === roomResult.room && playerId ? playerId : undefined
+      // under the same name: a rejoin keeps the seat's old name, so a new name needs a new seat.
+      const sameSeat =
+        sessionRoom === roomResult.room &&
+        !!playerId &&
+        sessionName?.toLowerCase() === nameResult.name.toLowerCase()
+      const existingPlayerId = sameSeat ? playerId : undefined
+
+      // Still seated in this room under another name: give that seat up first,
+      // otherwise the relay holds it (and its name) for the 30 s grace period.
+      if (!sameSeat && relayClient.isJoinedTo(roomResult.room)) {
+        relayClient.leave()
+      }
 
       const joined = await relayClient.join({
         room: roomResult.room,

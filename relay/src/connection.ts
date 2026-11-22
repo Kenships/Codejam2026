@@ -148,6 +148,24 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
         log.info("player kicked", { ...who(), player: seat.playerId, name: seat.name });
     }
 
+    function leave() {
+        if (identity.kind === "none") return fail("not_in_room");
+        if (identity.kind !== "player") return fail("forbidden");
+        const { room, playerId } = identity;
+        const fields = who();
+        identity = { kind: "none" };
+
+        // Only the socket that holds the seat can give it up (not a replaced one).
+        if (room.getSeat(playerId)?.conn !== conn) return;
+        const seat = room.removePlayer(playerId);
+        if (!seat) return;
+
+        // The seat is gone and identity is reset, so this socket's close event
+        // won't start a grace timer: the name is free for a new join immediately.
+        room.getHost()?.send({ t: "player_left", playerId, reason: "left" });
+        log.info("player left", { ...fields, name: seat.name, reason: "left" });
+    }
+
     // ---- socket events ----
 
     // Per-socket rate limit. `limited` is true while we're dropping messages,
@@ -200,6 +218,9 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
                     break;
                 case "kick":
                     kick(msg);
+                    break;
+                case "leave":
+                    leave();
                     break;
             }
         } catch (err) {
