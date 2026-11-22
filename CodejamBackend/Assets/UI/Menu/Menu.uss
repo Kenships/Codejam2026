@@ -319,8 +319,46 @@
     border-width: 2px;
     border-color: rgb(255, 255, 255);
     background-color: rgba(0, 0, 0, 0.65);
+    flex-direction: row;
     align-items: center;
     justify-content: center;
+}
+
+.menu-root .lobby-code-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-root .lobby-join-site {
+    font-size: 16px;
+    letter-spacing: 0.6px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    margin-top: 2px;
+}
+
+/* Black on white with its own quiet zone (baked into the texture) so phones scan it reliably */
+.menu-root .lobby-qr-box {
+    flex-shrink: 0;
+    align-items: center;
+    margin-left: 20px;
+}
+
+.menu-root .lobby-qr {
+    width: 176px;
+    height: 176px;
+    background-color: rgb(255, 255, 255);
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.menu-root .lobby-qr-label {
+    font-size: 14px;
+    letter-spacing: 2.4px;
+    padding-left: 2.4px;
+    -unity-text-align: middle-center;
+    margin-top: 6px;
 }
 
 .menu-root .lobby-code-label {

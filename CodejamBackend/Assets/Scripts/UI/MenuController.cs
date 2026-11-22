@@ -97,6 +97,13 @@ public class MenuController : MonoBehaviour
     private VisualElement _testRow;
     private Button _simulateJoinButton;
     private Button _simulateLeaveButton;
+    private VisualElement _roomQrBox;
+    private VisualElement _roomQr;
+    private Label _roomJoinSite;
+
+    // Join QR code, rebuilt only when the join link changes
+    private Texture2D _roomQrTexture;
+    private string _roomQrUrl;
 
     private readonly List<LobbyPlayer> _players = new();
     private readonly Dictionary<string, Label> _playerNameLabels = new();
@@ -165,6 +172,10 @@ public class MenuController : MonoBehaviour
         _testRow = _root.Q<VisualElement>("lobby-test-row");
         _simulateJoinButton = _root.Q<Button>("simulate-join");
         _simulateLeaveButton = _root.Q<Button>("simulate-leave");
+        _roomQrBox = _root.Q<VisualElement>("room-qr-box");
+        _roomQr = _root.Q<VisualElement>("room-qr");
+        _roomJoinSite = _root.Q<Label>("room-join-site");
+        _roomQrUrl = null; // fresh elements: apply the QR again on the next refresh
 
         if (_testRow != null)
             _testRow.style.display = showSimulateButtons ? DisplayStyle.Flex : DisplayStyle.None;
@@ -222,6 +233,7 @@ public class MenuController : MonoBehaviour
     private void OnDestroy()
     {
         ReleaseOwnedAvatars();
+        ReleaseJoinQr();
     }
 
     private void LateUpdate()
@@ -557,6 +569,69 @@ public class MenuController : MonoBehaviour
             AddRelayPlayer(player);
     }
 
+    /// <summary>
+    /// Shows the relay room's join link as a QR code, with the site's address under the
+    /// room code. Hidden when there's no real room (no relay, or between rooms).
+    /// Returns true if the QR code is showing.
+    /// </summary>
+    private bool RefreshJoinQr()
+    {
+        string url = _relay != null
+            && !string.IsNullOrEmpty(_currentRoomCode)
+            && _relay.RoomCode == _currentRoomCode
+                ? _relay.JoinUrl
+                : null;
+
+        if (url != _roomQrUrl)
+        {
+            _roomQrUrl = url;
+            ReleaseJoinQr();
+
+            if (!string.IsNullOrEmpty(url))
+            {
+                try
+                {
+                    _roomQrTexture = QrCode.CreateTexture(url);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[Menu] Couldn't make the join QR code for {url}: {e.Message}");
+                }
+            }
+
+            if (_roomQr != null)
+            {
+                _roomQr.style.backgroundImage = _roomQrTexture != null
+                    ? new StyleBackground(_roomQrTexture)
+                    : new StyleBackground(StyleKeyword.None);
+            }
+
+            if (_roomJoinSite != null)
+            {
+                _roomJoinSite.text = !string.IsNullOrEmpty(url) && Uri.TryCreate(url, UriKind.Absolute, out Uri uri)
+                    ? uri.Host
+                    : "";
+            }
+        }
+
+        bool shown = _roomQrTexture != null;
+        _roomQrBox?.EnableInClassList("is-hidden", !shown);
+        _roomJoinSite?.EnableInClassList("is-hidden", !shown || string.IsNullOrEmpty(_roomJoinSite.text));
+        return shown;
+    }
+
+    private void ReleaseJoinQr()
+    {
+        if (_roomQrTexture == null)
+            return;
+
+        if (Application.isPlaying)
+            Destroy(_roomQrTexture);
+        else
+            DestroyImmediate(_roomQrTexture);
+        _roomQrTexture = null;
+    }
+
     #endregion
 
     #region Players & Character Cubes
@@ -865,6 +940,7 @@ public class MenuController : MonoBehaviour
         if (_roomCodeDisplay != null)
             _roomCodeDisplay.text = string.IsNullOrEmpty(_currentRoomCode) ? "----" : _currentRoomCode;
 
+        bool hasJoinQr = RefreshJoinQr();
         int totalJoined = _players.Count;
         int connectedCount = GetConnectedPlayerCount();
 
@@ -882,9 +958,11 @@ public class MenuController : MonoBehaviour
 
         if (_lobbyDescription != null)
         {
-            _lobbyDescription.text = totalJoined == 0
-                ? "Enter the 4-letter code on your device to join"
-                : "Press START MATCH when everyone is ready";
+            _lobbyDescription.text = totalJoined > 0
+                ? "Press START MATCH when everyone is ready"
+                : hasJoinQr
+                    ? "Scan the QR code with your phone, or enter the code at the site above"
+                    : "Enter the 4-letter code on your device to join";
         }
 
         if (_startMatchButton != null)

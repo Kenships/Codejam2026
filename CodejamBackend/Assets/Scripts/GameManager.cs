@@ -24,6 +24,7 @@ public class GameManager : Singleton<GameManager>
     [SerializeField] private RevealController revealController;
     [SerializeField] private DrawingPhaseController drawingPhaseUI;
     [SerializeField] private GuessingPhaseController guessingPhaseUI;
+    [SerializeField] private LeaderboardUI leaderboardUI;
 
     public RevealController Reveal => revealController;
 
@@ -47,6 +48,12 @@ public class GameManager : Singleton<GameManager>
 
     [Tooltip("Seconds to hold the True Hue reveal before automatically advancing to the next drawing.")]
     [SerializeField, Min(1f)] private float revealDurationSeconds = 6f;
+
+    [Tooltip("Seconds the standings stay up after each drawing before the next one (the host can skip).")]
+    [SerializeField, Min(1f)] private float leaderboardDurationSeconds = 8f;
+
+    [Tooltip("Also show the standings after the last drawing, before the winners podium.")]
+    [SerializeField] private bool leaderboardAfterLastDrawing;
 
     [SerializeField] private string menuSceneName = "Menu";
 
@@ -85,6 +92,8 @@ public class GameManager : Singleton<GameManager>
     private readonly Dictionary<string, Color> _currentRoundGuesses = new();
     // Points each player earned on the current drawing (guessers, and the artist at reveal)
     private readonly Dictionary<string, int> _currentRoundPoints = new();
+    // Everyone's totalPoints before the current drawing was scored (for leaderboard movement)
+    private readonly Dictionary<string, int> _totalsBeforeDrawing = new();
     private float _guessingStartedAt;
     // When the current drawing/guessing countdown ends (Time.time), for resyncing phones
     private float _phaseEndsAt;
@@ -623,6 +632,10 @@ public class GameManager : Singleton<GameManager>
         if (guessedColors.Count == 0)
             guessedColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
 
+        _totalsBeforeDrawing.Clear();
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+            _totalsBeforeDrawing[GameSessionData.Players[i].playerId] = GameSessionData.Players[i].totalPoints;
+
         ScoreCurrentDrawing(currentDrawing);
 
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
@@ -634,14 +647,20 @@ public class GameManager : Singleton<GameManager>
 
         _advanceRevealRequested = false;
 
+        bool moreDrawings = _currentDrawingIndex + 1 < GameSessionData.Drawings.Count;
+        bool showStandings = leaderboardUI != null && (moreDrawings || leaderboardAfterLastDrawing);
+
         if (revealController != null)
         {
             // Let RevealController + RevealUI take over the full screen for the side-by-side True Hue reveal
             drawingPhaseUI?.SetVisible(false);
             guessingPhaseUI?.SetVisible(false);
 
-            bool hasMoreDrawings = _currentDrawingIndex + 1 < GameSessionData.Drawings.Count;
-            _revealUI?.SetActionButtonText(hasMoreDrawings ? "NEXT DRAWING" : "FINISH GAME");
+            bool hasMoreDrawings = moreDrawings;
+            _revealUI?.SetActionButtonText(
+                showStandings ? "LEADERBOARD"
+                : hasMoreDrawings ? "NEXT DRAWING"
+                : leaderboardUI != null ? "SEE WINNERS" : "FINISH GAME");
 
             yield return revealController.RevealLast(guessedColors, currentDrawing.targetColor);
 
@@ -681,8 +700,78 @@ public class GameManager : Singleton<GameManager>
             }
         }
 
+        if (showStandings)
+            yield return ShowStandingsRoutine(currentDrawing, moreDrawings);
+
         _sequenceRoutine = null;
         AdvanceToNextDrawing();
+    }
+
+    /// <summary>The leaderboard between drawings; the host's button (or the timer) moves on.</summary>
+    private IEnumerator ShowStandingsRoutine(GameSessionData.SubmittedDrawing drawing, bool moreDrawings)
+    {
+        _advanceRevealRequested = false;
+        guessingPhaseUI?.SetVisible(false);
+
+        leaderboardUI.ShowRound(
+            BuildStandings(drawing.playerId, withHistory: _currentDrawingIndex > 0),
+            _currentDrawingIndex + 1,
+            GameSessionData.Drawings.Count,
+            drawing.targetColor,
+            moreDrawings ? "NEXT DRAWING" : "SEE WINNERS",
+            leaderboardDurationSeconds);
+
+        float elapsed = 0f;
+        while (elapsed < leaderboardDurationSeconds && !_advanceRevealRequested)
+        {
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        leaderboardUI.Hide();
+    }
+
+    /// <summary>Everyone's standing by totalPoints (ties share a rank), for LeaderboardUI.</summary>
+    private List<LeaderboardUI.Entry> BuildStandings(string artistId, bool withHistory)
+    {
+        List<LeaderboardUI.Entry> entries = new();
+
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
+            int previousTotal = _totalsBeforeDrawing.TryGetValue(p.playerId, out int before) ? before : p.totalPoints;
+
+            int previousRank = 0;
+            if (withHistory)
+            {
+                previousRank = 1;
+                for (int j = 0; j < GameSessionData.Players.Count; j++)
+                {
+                    string otherId = GameSessionData.Players[j].playerId;
+                    int otherBefore = _totalsBeforeDrawing.TryGetValue(otherId, out int ob)
+                        ? ob
+                        : GameSessionData.Players[j].totalPoints;
+                    if (otherBefore > previousTotal)
+                        previousRank++;
+                }
+            }
+
+            entries.Add(new LeaderboardUI.Entry
+            {
+                PlayerId = p.playerId,
+                Name = string.IsNullOrEmpty(p.name) ? "PLAYER" : p.name,
+                Color = p.color,
+                Avatar = p.avatar,
+                Total = p.totalPoints,
+                PreviousTotal = previousTotal,
+                RoundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0,
+                Rank = RankBy(p.totalPoints, other => other.totalPoints),
+                PreviousRank = previousRank,
+                IsArtist = p.playerId == artistId
+            });
+        }
+
+        return entries;
     }
 
     private void RequestNextDrawing()
@@ -712,7 +801,18 @@ public class GameManager : Singleton<GameManager>
         colorPhysics?.ClearAllBodies();
 
         SetPhase(GamePhase.Finished);
-        guessingPhaseUI?.ShowGameFinished(GameSessionData.Drawings.Count);
+
+        if (leaderboardUI != null)
+        {
+            // Crown the winners on the podium (replaces the plain Game Complete card)
+            guessingPhaseUI?.SetVisible(false);
+            _totalsBeforeDrawing.Clear();
+            leaderboardUI.ShowWinners(BuildStandings(null, withHistory: false));
+        }
+        else
+        {
+            guessingPhaseUI?.ShowGameFinished(GameSessionData.Drawings.Count);
+        }
 
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
         {
@@ -722,6 +822,13 @@ public class GameManager : Singleton<GameManager>
 
     private void HandlePlayAgain()
     {
+        // A new game: the podium has crowned this one's winners, so scores start over
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.Players[i].totalPoints = 0;
+            GameSessionData.Players[i].streak = 0;
+        }
+
         _currentRound++;
         StartDrawingPhase();
     }
@@ -750,6 +857,9 @@ public class GameManager : Singleton<GameManager>
 
         drawingPhaseUI?.SetVisible(showDrawingUI);
         guessingPhaseUI?.SetVisible(showGuessingUI);
+
+        if (nextPhase != GamePhase.Finished)
+            leaderboardUI?.Hide();
 
         if (colorPhysics != null)
             colorPhysics.gameObject.SetActive(showPhysics);
@@ -815,6 +925,9 @@ public class GameManager : Singleton<GameManager>
         if (guessingPhaseUI == null)
             guessingPhaseUI = FindAnyObjectByType<GuessingPhaseController>(FindObjectsInactive.Include);
 
+        if (leaderboardUI == null)
+            leaderboardUI = FindAnyObjectByType<LeaderboardUI>(FindObjectsInactive.Include);
+
 #if UNITY_EDITOR
         if (drawingPhaseUI == null && Application.isPlaying)
         {
@@ -858,6 +971,20 @@ public class GameManager : Singleton<GameManager>
 
             if (subscribe)
                 _revealUI.PlayAgainRequested += RequestNextDrawing;
+        }
+
+        if (leaderboardUI != null)
+        {
+            leaderboardUI.ContinueRequested -= RequestNextDrawing;
+            leaderboardUI.PlayAgainRequested -= HandlePlayAgain;
+            leaderboardUI.BackToMenuRequested -= HandleBackToMenu;
+
+            if (subscribe)
+            {
+                leaderboardUI.ContinueRequested += RequestNextDrawing;
+                leaderboardUI.PlayAgainRequested += HandlePlayAgain;
+                leaderboardUI.BackToMenuRequested += HandleBackToMenu;
+            }
         }
 
         if (guessingPhaseUI != null)

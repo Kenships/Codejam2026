@@ -31,8 +31,16 @@
                 </ui:VisualElement>
 
                 <ui:VisualElement name="room-code-box" class="lobby-code-box hue-border">
-                    <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
-                    <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
+                    <ui:VisualElement name="room-code-text" class="lobby-code-text">
+                        <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
+                        <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
+                        <ui:Label name="room-join-site" class="lobby-join-site hue-dim-text is-hidden"/>
+                    </ui:VisualElement>
+                    <!-- Filled from RelayClient.JoinUrl; hidden until there's a real room -->
+                    <ui:VisualElement name="room-qr-box" class="lobby-qr-box is-hidden">
+                        <ui:VisualElement name="room-qr" class="lobby-qr"/>
+                        <ui:Label name="room-qr-label" text="SCAN TO JOIN" class="lobby-qr-label hue-dim-text"/>
+                    </ui:VisualElement>
                 </ui:VisualElement>
 
                 <ui:Label name="lobby-description" text="Enter the 4-letter code on your device to join" class="lobby-description hue-dim-text"/>

@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="Leaderboard.uss"/>
+    <ui:VisualElement name="lb-root" picking-mode="Ignore" class="lb-root is-hidden">
+        <ui:VisualElement name="lb-scrim" class="lb-scrim"/>
+
+        <!-- Standings after each drawing (rows are built by LeaderboardUI) -->
+        <ui:VisualElement name="round-view" picking-mode="Ignore" class="lb-view is-hidden">
+            <ui:VisualElement picking-mode="Ignore" class="lb-header">
+                <ui:Label name="round-kicker" text="AFTER DRAWING 1 / 4" class="lb-kicker accent-dim-text"/>
+                <ui:Label name="round-title" text="LEADERBOARD" class="lb-title accent-text"/>
+            </ui:VisualElement>
+            <ui:VisualElement name="round-card" class="lb-card accent-border">
+                <ui:VisualElement name="round-list" class="lb-list"/>
+            </ui:VisualElement>
+            <ui:VisualElement picking-mode="Ignore" class="lb-footer">
+                <ui:Label name="round-countdown" text="" class="lb-countdown accent-dim-text"/>
+                <ui:Button name="continue" text="NEXT DRAWING" class="lb-button lb-button--primary"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- End of game: podium for the top 3, everyone else beside it -->
+        <ui:VisualElement name="winners-view" picking-mode="Ignore" class="lb-view is-hidden">
+            <ui:VisualElement picking-mode="Ignore" class="lb-header">
+                <ui:Label name="winners-kicker" text="GAME COMPLETE" class="lb-kicker accent-dim-text"/>
+                <ui:Label name="winners-title" text="WINNERS" class="lb-title lb-title--big accent-text"/>
+            </ui:VisualElement>
+            <ui:VisualElement picking-mode="Ignore" class="lb-winners-body">
+                <ui:VisualElement name="podium" picking-mode="Ignore" class="lb-podium"/>
+                <ui:VisualElement name="others-card" class="lb-card lb-others-card accent-border">
+                    <ui:Label text="EVERYONE ELSE" class="lb-others-title accent-dim-text"/>
+                    <ui:VisualElement name="others-list" class="lb-list"/>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement picking-mode="Ignore" class="lb-footer">
+                <ui:Button name="back-to-menu" text="BACK TO MENU" class="lb-button"/>
+                <ui:Button name="play-again" text="PLAY AGAIN" class="lb-button lb-button--primary"/>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -59,6 +59,14 @@ public partial class PixelBlastBackground : VisualElement
 
     private VisualElement _panelRoot;
 
+    /// <summary>
+    /// False = don't listen for pointer events on this element's panel; the owner
+    /// feeds the pointer through SetPointer / ClearPointer / AddRipple instead
+    /// (e.g. when the panel renders to a texture that never gets input).
+    /// Set before the element is added to a panel.
+    /// </summary>
+    public bool listenToPanelPointer = true;
+
     public PixelBlastBackground()
     {
         pickingMode = PickingMode.Ignore;
@@ -77,10 +85,13 @@ public partial class PixelBlastBackground : VisualElement
 
         // Listen on the whole panel (like the frontend's window listeners),
         // since the menu sits on top of this element
-        _panelRoot = evt.destinationPanel.visualTree;
-        _panelRoot.RegisterCallback<PointerMoveEvent>(OnPointerMove, TrickleDown.TrickleDown);
-        _panelRoot.RegisterCallback<PointerDownEvent>(OnPointerDown, TrickleDown.TrickleDown);
-        _panelRoot.RegisterCallback<PointerLeaveEvent>(OnPointerLeave);
+        if (listenToPanelPointer)
+        {
+            _panelRoot = evt.destinationPanel.visualTree;
+            _panelRoot.RegisterCallback<PointerMoveEvent>(OnPointerMove, TrickleDown.TrickleDown);
+            _panelRoot.RegisterCallback<PointerDownEvent>(OnPointerDown, TrickleDown.TrickleDown);
+            _panelRoot.RegisterCallback<PointerLeaveEvent>(OnPointerLeave);
+        }
 
         _tick = schedule.Execute(Tick).Every(16);
     }
@@ -123,6 +134,20 @@ public partial class PixelBlastBackground : VisualElement
     }
 
     private void OnPointerLeave(PointerLeaveEvent evt) => _pointerInside = false;
+
+    /// <summary>Moves the hover trail to a position in this element's local space.</summary>
+    public void SetPointer(Vector2 localPosition)
+    {
+        _pointer = localPosition;
+
+        if (!_pointerInside)
+            _mouse = _pointer;
+
+        _pointerInside = true;
+    }
+
+    /// <summary>The pointer left the screen: let the hover trail fade out.</summary>
+    public void ClearPointer() => _pointerInside = false;
 
     public void AddRipple(Vector2 localPosition)
     {

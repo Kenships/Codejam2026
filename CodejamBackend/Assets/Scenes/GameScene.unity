@@ -157,7 +157,7 @@ MonoBehaviour:
   verletDamping: 0.01
   minVelocity: 0.001
   hsvSortStrength: 0.08
-  clusterSpread: 1.5
+  clusterSpread: 1
   hueSeam: 0.5
   cohesionStrength: 0.005
   centeringStrength: 0.05
@@ -170,23 +170,23 @@ MonoBehaviour:
   waveCount: 2
   waveSpacing: 3
   mergeSound: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
-  mergeSpeed: 10
+  mergeSpeed: 32.2
   mergeAlignSpeed: 1000
   rotationReturnSpeed: 60
-  mergeApproachTimeout: 1
+  mergeApproachTimeout: 0.75
   mergeRetryCooldown: 1
-  mergePressDuration: 0.25
+  mergePressDuration: 0.1
   mergeMaxSquash: 0.1
   mergeMaxStretch: 1.08
   mergeUnsquashDuration: 0.25
   mergeFuseOffset: 0.05
   mergeOverlapTimeout: 0.5
-  mergeSpawnSquash: 0.1
+  mergeSpawnSquash: 0.01
   mergeSpawnDuration: 0.15
   mergeSpawnOvershoot: 1
   spawnDistance: 5
   spawnInterval: 0.15
-  squashAllInterval: 0.01
+  squashAllInterval: 0.2
   squashAllGracePeriod: 2.5
   cubeSprite: {fileID: 0}
   cubeCollapseDuration: 0.6
@@ -198,7 +198,7 @@ MonoBehaviour:
   cubeBurstDelay: 0.4
   cubeBurstDuration: 0.2
   cubeBurstScale: 1.4
-  cubeBurstSound: {fileID: 0}
+  cubeBurstSound: {fileID: 8300000, guid: cc5170f3d7b69444ea427067dde2c8fb, type: 3}
 --- !u!4 &413268375
 Transform:
   m_ObjectHideFlags: 0
@@ -260,12 +260,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   dontDestroyOnLoad: 1
   colorPhysics: {fileID: 413268374}
+  revealController: {fileID: 497188568}
   drawingPhaseUI: {fileID: 1700000003}
+  guessingPhaseUI: {fileID: 0}
+  leaderboardUI: {fileID: 1740000004}
   startDrawingOnStart: 1
   drawingDurationSeconds: 60
+  lateSubmitGraceSeconds: 5
+  guessingDurationSeconds: 30
   allSubmittedAdvanceDelay: 1.5
-  autoStartMergeAfterDrawing: 1
-  revealController: {fileID: 497188568}
+  revealDurationSeconds: 6
+  menuSceneName: Menu
   colorCount: 4
   saturation: 1
   value: 1
@@ -273,24 +278,8 @@ MonoBehaviour:
   minUnitArea: 0.6
   maxUnitArea: 1.5
   mergeDelay: 2
-  trueColor: {r: 1, g: 1, b: 1, a: 1}
-  removeDelay: 1.5
   useSeed: 0
   seed: 0
---- !u!114 &497188568
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 497188565}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 593bd6234936bbf42988fcfb7717df53, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RevealController
-  colorPhysics: {fileID: 413268374}
-  revealCamera: {fileID: 519420031}
 --- !u!4 &497188567
 Transform:
   m_ObjectHideFlags: 0
@@ -306,6 +295,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &497188568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 497188565}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 593bd6234936bbf42988fcfb7717df53, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RevealController
+  colorPhysics: {fileID: 413268374}
+  revealCamera: {fileID: 519420031}
+  slideDuration: 1
+  slideEase: 7
+  gap: 0.5
+  padding: 1.25
+  reservedTop: 0.16
+  reservedBottom: 0.32
+  growDuration: 0.5
+  growOvershoot: 1
+  colorBlendDuration: 1.5
+  colorBlendEase: 6
+  playEffect: 1
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0
@@ -649,6 +663,13 @@ MonoBehaviour:
   m_ParentUI: {fileID: 0}
   sourceAsset: {fileID: 9197481963319205126, guid: 2a8abadc256b6f94c95ab439b3ff1c37, type: 3}
   m_SortingOrder: 10
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
 --- !u!114 &1700000003
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -710,7 +731,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Codejam.Networking.HostRelayClient
   dontDestroyOnLoad: 1
-  relayUrl: ws://localhost:8080/
+  createRelayIfMissing: 1
   logTraffic: 0
 --- !u!4 &1700000012
 Transform:
@@ -776,6 +797,13 @@ MonoBehaviour:
   m_ParentUI: {fileID: 0}
   sourceAsset: {fileID: 9197481963319205126, guid: eb4cad4f4f16d79408f0340581462062, type: 3}
   m_SortingOrder: 0
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
 --- !u!114 &1720000004
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -790,6 +818,89 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RevealUI
   document: {fileID: 1720000003}
   revealController: {fileID: 497188568}
+  resultDelay: 0.4
+  countUpDuration: 1.2
+  countUpEase: 9
+  showPlayAgain: 1
+  onPlayAgain:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!1 &1740000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1740000002}
+  - component: {fileID: 1740000003}
+  - component: {fileID: 1740000004}
+  m_Layer: 5
+  m_Name: Leaderboard UI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1740000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1740000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1740000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1740000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_PanelSettings: {fileID: 11400000, guid: 8ffe5ea8cb994741b7f95979113c0837, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: 7fb59b9433b74e9a9752ae66f891005c, type: 3}
+  m_SortingOrder: 20
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
+--- !u!114 &1740000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1740000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 27ea16cbb3e042a7b2f9fa246c9e4073, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LeaderboardUI
+  document: {fileID: 1740000003}
+  rowHeight: 64
+  othersRowHeight: 52
+  rowStagger: 0.06
+  reorderDelay: 1
+  countUpDuration: 1.1
+  crownBobPixels: 5
+  winnersRainbowDegPerSec: 24
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -802,3 +913,4 @@ SceneRoots:
   - {fileID: 1700000004}
   - {fileID: 1700000012}
   - {fileID: 1720000002}
+  - {fileID: 1740000002}
