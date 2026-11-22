@@ -4,8 +4,10 @@ import { useNavigate, useParams } from 'react-router'
 import PixelBlast from '@/components/PixelBlast'
 import { CategoryPickerCard } from '@/components/CategoryPickerCard'
 import { DrawingCanvasCard } from '@/components/DrawingCanvasCard'
+import { HowToPlay, TutorialTabs } from '@/components/HowToPlay'
 import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
 import {
+  DrawingViewport,
   PlayingBoardCard,
   type IncomingRoundDrawing,
 } from '@/components/PlayingBoardCard'
@@ -433,7 +435,9 @@ export function PlayPage() {
                     )}
                   </div>
                   {status !== 'disconnected' && (
-                    <LobbyPfpCanvas inkColor={waitingColor} />
+                    <TutorialTabs key="avatar" label="Your Avatar">
+                      <LobbyPfpCanvas inkColor={waitingColor} />
+                    </TutorialTabs>
                   )}
                   {status === 'disconnected' && (
                     <Button
@@ -489,6 +493,7 @@ export function PlayPage() {
                         </p>
                       )}
                     </div>
+                    <HowToPlay />
                   </CardContent>
                 </div>
               </Card>
@@ -555,6 +560,13 @@ export function PlayPage() {
                       </p>
                     )}
                   </div>
+                  {/* key: each screen starts on its own tab instead of inheriting the last screen's */}
+                  <TutorialTabs key="drawing" label="Your Drawing">
+                    <DrawingViewport
+                      drawing={incomingDrawing}
+                      color={drawingTarget?.hex ?? '#ffffff'}
+                    />
+                  </TutorialTabs>
                 </CardContent>
               </div>
             </Card>
@@ -605,6 +617,7 @@ export function PlayPage() {
                       </p>
                     )}
                   </div>
+                  <HowToPlay />
 
                   <Button
                     type="button"

@@ -116,7 +116,7 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 16, chil
       <div className="relative">{children}</div>
       {thumbPos && (
         <div
-          className="pointer-events-none absolute rounded-full border-2 border-white shadow-[0_0_8px_rgba(0,0,0,0.8)]"
+          className="pointer-events-none absolute border-2 h-4 w-4 border-white shadow-[0_0_8px_rgba(0,0,0,0.8)]"
           style={{ width: thumb, height: thumb, ...thumbPos, background: hueToHex(value!) }}
         />
       )}
