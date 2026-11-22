@@ -104,6 +104,132 @@ public static class QrCode
         return texture;
     }
 
+    // Rounding, in modules: exposed corners of data modules, and the finder "eyes" (rounded more)
+    private const float ModuleCornerRadius = 0.32f;
+    private const float FinderOuterRadius = 2.1f; // 7x7 ring
+    private const float FinderHoleRadius = 1.4f;  // 5x5 gap
+    private const float FinderPupilRadius = 1.0f; // 3x3 centre
+
+    /// <summary>
+    /// Renders a QR code as a mask: white, rounded modules on a fully transparent background
+    /// (quiet zone included), meant to be layered over a coloured plate and tinted to whichever
+    /// ink reads on it (see <see cref="InkFor"/>); tinting multiplies, so white can become any colour.
+    /// Exposed module corners are rounded, so touching modules stay joined into one shape, and the
+    /// finder "eyes" are drawn as smooth rounded rings. The caller owns the texture and should Destroy it.
+    /// </summary>
+    public static Texture2D CreateMaskTexture(string text, int pixelsPerModule = 16, Ecc minEcc = Ecc.Medium)
+    {
+        const int quietZone = 4;
+        bool[,] modules = Encode(text, minEcc);
+        int size = modules.GetLength(0);
+        int scale = Mathf.Max(1, pixelsPerModule);
+        int pixels = (size + quietZone * 2) * scale;
+
+        bool DarkAt(int x, int y) => x >= 0 && x < size && y >= 0 && y < size && modules[y, x];
+
+        // Is the point (u, v), in module units from the symbol's top-left, inside a module's shape?
+        bool InShape(float u, float v)
+        {
+            int col = Mathf.FloorToInt(u);
+            int row = Mathf.FloorToInt(v);
+            if (col < 0 || col >= size || row < 0 || row >= size)
+                return false;
+
+            // Finders are drawn as whole rounded rings rather than module by module
+            if (FinderAt(col, row, size, out int fx, out int fy))
+            {
+                float lu = u - fx, lv = v - fy;
+                return InRoundedRect(lu, lv, 2f, 2f, 5f, 5f, FinderPupilRadius)
+                    || (InRoundedRect(lu, lv, 0f, 0f, 7f, 7f, FinderOuterRadius)
+                        && !InRoundedRect(lu, lv, 1f, 1f, 6f, 6f, FinderHoleRadius));
+            }
+
+            if (!modules[row, col])
+                return false;
+
+            // Round a corner only where both neighbours beside it are empty
+            float fu = u - col, fv = v - row;
+            float r = ModuleCornerRadius;
+            bool left = fu < r, right = fu > 1f - r, top = fv < r, bottom = fv > 1f - r;
+            if ((left || right) && (top || bottom))
+            {
+                int dx = left ? -1 : 1, dy = top ? -1 : 1;
+                if (!DarkAt(col + dx, row) && !DarkAt(col, row + dy))
+                {
+                    float du = fu - (left ? r : 1f - r), dv = fv - (top ? r : 1f - r);
+                    return du * du + dv * dv <= r * r;
+                }
+            }
+            return true;
+        }
+
+        // 2x2 supersampling for smooth rounded edges; colour stays white (even where transparent,
+        // so mipmaps don't bleed dark fringes), only alpha carries the shape
+        var colors = new Color32[pixels * pixels];
+        for (int py = 0; py < pixels; py++)
+        {
+            // Texture rows go bottom-up; QR rows go top-down
+            int top = pixels - 1 - py;
+            for (int px = 0; px < pixels; px++)
+            {
+                int covered = 0;
+                for (int s = 0; s < 4; s++)
+                {
+                    float u = (px + 0.25f + 0.5f * (s & 1)) / scale - quietZone;
+                    float v = (top + 0.25f + 0.5f * (s >> 1)) / scale - quietZone;
+                    if (InShape(u, v))
+                        covered++;
+                }
+                colors[py * pixels + px] = new Color32(255, 255, 255, (byte)(covered * 255 / 4));
+            }
+        }
+
+        // Rendered larger than it's shown and mipmapped, so the UI can scale it down to any size cleanly
+        var texture = new Texture2D(pixels, pixels, TextureFormat.RGBA32, true)
+        {
+            name = "QR Code (Mask)",
+            filterMode = FilterMode.Trilinear,
+            wrapMode = TextureWrapMode.Clamp,
+            hideFlags = HideFlags.DontSave,
+        };
+        texture.SetPixels32(colors, 0);
+        texture.Apply(true, true);
+        return texture;
+    }
+
+    /// <summary>
+    /// Black or white, whichever contrasts more with <paramref name="background"/> (WCAG relative
+    /// luminance): black on warm/bright hues like red, orange, yellow and green, white on deep ones
+    /// like blue and violet. The worst case (a background around 18% luminance) still gets about
+    /// 4.6:1, enough for phones to scan.
+    /// </summary>
+    public static Color InkFor(Color background)
+    {
+        Color lin = background.linear;
+        float luminance = 0.2126f * lin.r + 0.7152f * lin.g + 0.0722f * lin.b;
+        float contrastWithWhite = 1.05f / (luminance + 0.05f);
+        float contrastWithBlack = (luminance + 0.05f) / 0.05f;
+        return contrastWithBlack >= contrastWithWhite ? Color.black : Color.white;
+    }
+
+    /// <summary>True if (u, v) is inside the rectangle (x0, y0)-(x1, y1) with corners of radius r.</summary>
+    private static bool InRoundedRect(float u, float v, float x0, float y0, float x1, float y1, float r)
+    {
+        if (u < x0 || u > x1 || v < y0 || v > y1)
+            return false;
+        float du = Mathf.Max(x0 + r - u, u - (x1 - r), 0f);
+        float dv = Mathf.Max(y0 + r - v, v - (y1 - r), 0f);
+        return du * du + dv * dv <= r * r;
+    }
+
+    /// <summary>True if (x, y) is in one of the three 7x7 finder patterns; outputs its top-left corner.</summary>
+    private static bool FinderAt(int x, int y, int size, out int fx, out int fy)
+    {
+        fx = x < 7 ? 0 : x >= size - 7 ? size - 7 : -1;
+        fy = y < 7 ? 0 : y >= size - 7 ? size - 7 : -1;
+        return fx >= 0 && fy >= 0 && !(fx > 0 && fy > 0); // no finder bottom-right
+    }
+
     #region Data
 
     private static int CharCountBits(int version) => version <= 9 ? 8 : 16;

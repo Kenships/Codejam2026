@@ -63,6 +63,12 @@
     max-width: 500px;
 }
 
+/* Lobby with a join link: lobby card (500) + gap (24) + QR panel (324) side by side.
+   MenuController measures this column to keep the player cube ring clear of both panels. */
+.menu-root .menu-column--lobby.menu-column--lobby-qr {
+    max-width: 848px;
+}
+
 .menu-root .unity-label {
     margin: 0;
     padding: 0;
@@ -93,6 +99,28 @@
     font-size: 76px;
     letter-spacing: 3.8px;
     padding-left: 3.8px;
+}
+
+/* Wider lobby (card + QR panel, 848px): scale the header up to match the panels' width.
+   TrueHueTitle reads the resolved font size for its overlap shift, so the animation scales too. */
+.menu-root .menu-column--lobby.menu-column--lobby-qr .menu-header {
+    margin-bottom: 14px;
+}
+
+.menu-root .menu-column--lobby.menu-column--lobby-qr .menu-title {
+    font-size: 132px;
+    letter-spacing: 6px;
+    padding-left: 6px;
+}
+
+.menu-root .menu-column--lobby.menu-column--lobby-qr .menu-subtitle {
+    font-size: 30px;
+    letter-spacing: 1px;
+}
+
+.menu-root .menu-column--lobby.menu-column--lobby-qr .hue-bar {
+    height: 18px;
+    margin-bottom: 16px;
 }
 
 .menu-root .true-hue-title {
@@ -177,8 +205,21 @@
 }
 
 .menu-root .card--lobby {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     padding: 24px 32px 26px 32px;
     align-items: center;
+    justify-content: center;
+}
+
+/* Separate QR panel to the right of the lobby card, stretched to the same height */
+.menu-root .card--qr {
+    flex-shrink: 0;
+    margin-left: 24px;
+    padding: 20px 28px 24px 28px;
+    align-items: center;
+    justify-content: center;
 }
 
 .menu-root .card-title {
@@ -263,6 +304,19 @@
 
 /* ---- Host Lobby Center Join Card ---- */
 
+.menu-root .lobby-view {
+    width: 100%;
+    align-items: center;
+}
+
+/* Lobby card + QR panel row; panels stretch to the taller one's height */
+.menu-root .lobby-panels {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: center;
+}
+
 .menu-root .lobby-header-row {
     width: 100%;
     flex-direction: row;
@@ -314,34 +368,63 @@
     justify-content: center;
 }
 
-.menu-root .lobby-join-site {
-    font-size: 16px;
-    letter-spacing: 0.6px;
-    -unity-text-align: middle-center;
-    white-space: nowrap;
-    margin-top: 2px;
-}
-
-/* Black on white with its own quiet zone (baked into the texture) so phones scan it reliably */
-.menu-root .lobby-qr-box {
-    flex-shrink: 0;
-    align-items: center;
-    margin-left: 20px;
-}
-
-.menu-root .lobby-qr {
-    width: 176px;
-    height: 176px;
-    background-color: rgb(255, 255, 255);
-    -unity-background-scale-mode: scale-to-fit;
-}
-
-.menu-root .lobby-qr-label {
-    font-size: 14px;
+.menu-root .qr-card-title {
+    font-size: 30px;
+    -unity-font-style: bold;
     letter-spacing: 2.4px;
     padding-left: 2.4px;
     -unity-text-align: middle-center;
-    margin-top: 6px;
+    white-space: nowrap;
+    margin-bottom: 12px;
+    text-shadow: 0 0 12px rgb(0, 0, 0);
+}
+
+/* QR plate: the ColorBody cube sprite (white, so MenuController tints it the picked hue);
+   sized to be scannable from across a living room */
+.menu-root .lobby-qr {
+    flex-shrink: 0;
+    width: 264px;
+    height: 264px;
+    background-image: url("project://database/Assets/Media/Rectangle%2016.png?fileID=2800000&guid=7ffe406af9b49a840aad9ecc5a83ea0c&type=3#Rectangle 16");
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/* White-on-transparent QR mask over the plate, with its quiet zone baked in; MenuController
+   tints it black or white, whichever reads on the plate's hue */
+.menu-root .lobby-qr-code {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/* Join site centred under both panels, large enough to read from the couch */
+.menu-root .lobby-join-link {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    margin-top: 16px;
+}
+
+.menu-root .lobby-join-prefix {
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding-left: 2px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    margin-right: 14px;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+.menu-root .lobby-join-site {
+    font-size: 42px;
+    -unity-font-style: bold;
+    letter-spacing: 1.6px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 16px rgb(0, 0, 0);
 }
 
 .menu-root .lobby-code-label {
