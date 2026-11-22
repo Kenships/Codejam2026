@@ -32,7 +32,9 @@
                     <ui:Label name="guesses-label" text="WHAT WENT IN" class="reveal-guesses-label"/>
                     <ui:VisualElement name="guesses" class="reveal-guesses"/>
                 </ui:VisualElement>
-                <ui:Button name="play-again" text="NEXT DRAWING" class="reveal-button"/>
+                <ui:Button name="play-again" text="NEXT DRAWING" class="reveal-button glint-host">
+                    <GlintOverlay name="play-again-glint"/>
+                </ui:Button>
             </ui:VisualElement>
         </ui:VisualElement>
 

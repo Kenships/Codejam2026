@@ -99,12 +99,12 @@ describe("parseClientMessage: message types", () => {
         assert.equal(fails('{"t":"kick"}'), "bad_message");
     });
 
-    test("set_max_players: integer 1..12 only", () => {
+    test("set_max_players: integer 1..32 only", () => {
         assert.deepEqual(ok('{"t":"set_max_players","maxPlayers":6}'), { t: "set_max_players", maxPlayers: 6 });
-        assert.deepEqual(ok('{"t":"set_max_players","maxPlayers":12}'), { t: "set_max_players", maxPlayers: 12 });
+        assert.deepEqual(ok('{"t":"set_max_players","maxPlayers":32}'), { t: "set_max_players", maxPlayers: 32 });
         assert.equal(fails('{"t":"set_max_players"}'), "bad_message");
         assert.equal(fails('{"t":"set_max_players","maxPlayers":0}'), "bad_message");
-        assert.equal(fails('{"t":"set_max_players","maxPlayers":13}'), "bad_message");
+        assert.equal(fails('{"t":"set_max_players","maxPlayers":33}'), "bad_message");
         assert.equal(fails('{"t":"set_max_players","maxPlayers":4.5}'), "bad_message");
         assert.equal(fails('{"t":"set_max_players","maxPlayers":"6"}'), "bad_message");
     });

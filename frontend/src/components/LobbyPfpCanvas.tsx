@@ -7,6 +7,7 @@ import {
 } from 'react'
 import { Check, Eraser, Trash2, Undo2 } from 'lucide-react'
 
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import {
   compressWhiteDrawingImage,
@@ -317,7 +318,10 @@ export function LobbyPfpCanvas({ inkColor }: LobbyPfpCanvasProps) {
               Saved
             </span>
           ) : saving ? (
-            'Saving...'
+            <span className="inline-flex items-center">
+              Saving
+              <BouncingDots />
+            </span>
           ) : (
             'Save PFP'
           )}

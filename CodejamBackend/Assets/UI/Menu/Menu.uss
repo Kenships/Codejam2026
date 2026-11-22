@@ -34,6 +34,13 @@
     overflow: hidden;
 }
 
+/* Outer ring of seats in use (more than 12 players): smaller tags so neighbours don't overlap */
+.menu-root .is-crowded .character-name-label {
+    padding: 1px 6px;
+    font-size: 17px;
+    letter-spacing: 1px;
+}
+
 .menu-root .character-name-label {
     position: absolute;
     translate: -50% -50%;
@@ -254,6 +261,68 @@
     -unity-text-align: middle-center;
     white-space: normal;
     text-shadow: 0 0 8px rgb(0, 0, 0);
+}
+
+/* ---- Animated text & glint (WaveText.cs, GlintOverlay.cs) ---- */
+
+/* One Label per character in a row; font size/style/shadow come from the WaveText's own class */
+.menu-root .wave-text {
+    flex-direction: row;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+/* letter-spacing doesn't apply between separate Labels, so it's redone as a margin per class */
+.menu-root .wave-text__char {
+    margin: 0;
+    padding: 0;
+    letter-spacing: 0;
+}
+
+.menu-root .lobby-title .wave-text__char {
+    margin-right: 1.4px;
+}
+
+.menu-root .qr-card-title .wave-text__char {
+    margin-right: 2.4px;
+}
+
+.menu-root .lobby-code-value .wave-text__char {
+    margin-right: 10px;
+}
+
+/* A button whose label is a WaveText child (CREATE GAME / CREATING ROOM...) */
+.menu-root .menu-button--wave.unity-button {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.menu-root .menu-button--wave .wave-text__char {
+    margin-right: 2.4px;
+}
+
+/* START MATCH: clip the glint streak to the button */
+.menu-root .start-match-button {
+    overflow: hidden;
+}
+
+.menu-root .glint-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.menu-root .glint-overlay__streak {
+    position: absolute;
+    left: 0;
+    top: -60%;
+    width: 26px;
+    height: 220%;
+    rotate: 22deg;
+    background-color: rgba(255, 255, 255, 0.55);
 }
 
 /* ---- Create Game Settings (LABEL  [-] value [+]) ---- */

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DrawingStroke } from '@/lib/drawingCodec'
+import type { DrawingMime, DrawingStroke } from '@/lib/drawingCodec'
 
 export type ConnectionStatus =
   | 'idle'
@@ -12,7 +12,7 @@ export type ConnectionStatus =
 
 export interface SavedPfpCompressed {
   base64: string
-  mime: 'image/png' | 'image/jpeg'
+  mime: DrawingMime
   width: number
   height: number
 }

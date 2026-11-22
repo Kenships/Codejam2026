@@ -20,10 +20,11 @@ export const config = {
 
     /**
      * Per socket. A token bucket: up to `burst` messages at once, refilling at
-     * `perSecond`. Normal play peaks around 10-15/s (strokes, round start).
+     * `perSecond`. The biggest burst is the host at a phase change: about two
+     * messages per player (e.g. your_target + state), so ~64 with 32 players.
      */
     rateLimit: {
-        burst: 40,
+        burst: 100,
         perSecond: 40,
     },
 };

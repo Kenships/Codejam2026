@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using PrimeTween;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -17,7 +18,7 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(UIDocument))]
 public class LeaderboardUI : MonoBehaviour
 {
-    /// <summary>One player's standing. Rank 1 = best; ties share a rank.</summary>
+    /// <summary>One player's standing. Rank 1 = best; every player has their own rank (no ties).</summary>
     public struct Entry
     {
         public string PlayerId;
@@ -50,6 +51,9 @@ public class LeaderboardUI : MonoBehaviour
     [SerializeField] private UIDocument document;
 
     [Header("Rows")]
+    [Tooltip("Most players listed: the top N in the standings, and podium + ranks 4..N on the " +
+             "winners screen. 10 fills the 1080p card; the rest are summed up as \"+N MORE\".")]
+    [SerializeField, Min(3)] private int maxShownPlayers = 10;
     [SerializeField, Min(30f)] private float rowHeight = 64f;
     [SerializeField, Min(30f)] private float othersRowHeight = 52f;
     [SerializeField, Min(0f)] private float rowStagger = 0.06f;
@@ -92,6 +96,8 @@ public class LeaderboardUI : MonoBehaviour
     private Label _roundKicker;
     private Label _roundTitle;
     private Label _roundCountdown;
+    private Label _roundCountdownNumber; // drops in each time it changes
+    private int _shownCountdown = -1;
     private Label _winnersKicker;
     private Label _winnersTitle;
     private Button _continue;
@@ -109,6 +115,12 @@ public class LeaderboardUI : MonoBehaviour
     private float _countUpStartsAt = float.MaxValue;
 
     private readonly List<VisualElement> _bobbingCrowns = new();
+
+    // Winner crowns and their own colour, for the periodic shine once they've landed
+    private readonly List<(LeaderboardGlyph glyph, Color tint)> _shiningCrowns = new();
+    private float _crownShineFrom = float.MaxValue;
+    private const float CrownShineInterval = 3.2f;
+    private const float CrownShineDuration = 0.6f;
 
     public bool IsShowing => _mode != Mode.Hidden;
 
@@ -157,11 +169,16 @@ public class LeaderboardUI : MonoBehaviour
         _roundKicker = _root.Q<Label>("round-kicker");
         _roundTitle = _root.Q<Label>("round-title");
         _roundCountdown = _root.Q<Label>("round-countdown");
+        _roundCountdownNumber = _root.Q<Label>("round-countdown-number");
         _winnersKicker = _root.Q<Label>("winners-kicker");
         _winnersTitle = _root.Q<Label>("winners-title");
         _continue = _root.Q<Button>("continue");
         _playAgain = _root.Q<Button>("play-again");
         _backToMenu = _root.Q<Button>("back-to-menu");
+
+        // Created up front so ApplyAccent tints them along with the rest
+        SetMoreLabel(_roundList, 0);
+        SetMoreLabel(_othersList, 0);
 
         if (_continue != null)
             _continue.clicked += OnContinueClicked;
@@ -187,7 +204,7 @@ public class LeaderboardUI : MonoBehaviour
         if (_mode == Mode.Round && _roundCountdown != null)
         {
             int remaining = Mathf.CeilToInt(_countdownEndsAt - Time.time);
-            _roundCountdown.text = remaining > 0 ? $"{_countdownPrefix} IN {remaining}" : "";
+            UpdateCountdown(remaining);
         }
 
         if (_mode == Mode.Winners)
@@ -198,7 +215,70 @@ public class LeaderboardUI : MonoBehaviour
             float bob = Mathf.Sin(Time.time * 2.4f) * crownBobPixels;
             foreach (VisualElement crown in _bobbingCrowns)
                 crown.style.translate = new Translate(0f, bob);
+
+            UpdateCrownShine();
         }
+    }
+
+    /// <summary>
+    /// Every few seconds each winner's crown briefly brightens toward white and swells a touch,
+    /// like light catching it. Starts a moment after the crowns have dropped in.
+    /// </summary>
+    private void UpdateCrownShine()
+    {
+        if (_shiningCrowns.Count == 0 || Time.time < _crownShineFrom)
+            return;
+
+        float p = Mathf.Repeat(Time.time - _crownShineFrom, CrownShineInterval) / CrownShineDuration;
+        float shine = p < 1f ? Mathf.Sin(p * Mathf.PI) : 0f;
+
+        foreach ((LeaderboardGlyph glyph, Color tint) in _shiningCrowns)
+        {
+            glyph.Tint = Color.Lerp(tint, Color.white, shine * 0.65f);
+            float scale = 1f + shine * 0.06f;
+            glyph.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        }
+    }
+
+    /// <summary>"NEXT DRAWING IN 5": the number drops in from above each time it changes.</summary>
+    private void UpdateCountdown(int remaining)
+    {
+        bool show = remaining > 0;
+
+        // Without the separate number label (older UXML), keep it all in one label
+        if (_roundCountdownNumber == null)
+        {
+            _roundCountdown.text = show ? $"{_countdownPrefix} IN {remaining}" : "";
+            return;
+        }
+
+        _roundCountdown.text = show ? $"{_countdownPrefix} IN" : "";
+        _roundCountdownNumber.text = show ? remaining.ToString() : "";
+
+        if (remaining == _shownCountdown)
+            return;
+
+        _shownCountdown = remaining;
+        if (show)
+            DropIn(_roundCountdownNumber);
+    }
+
+    private static void DropIn(VisualElement element)
+    {
+        const float dropPixels = 10f;
+
+        Tween.Custom(
+            target: element,
+            startValue: 0f,
+            endValue: 1f,
+            duration: 0.28f,
+            onValueChange: (el, t) =>
+            {
+                el.style.translate = new Translate(0f, (t - 1f) * dropPixels);
+                el.style.opacity = t;
+            },
+            ease: Ease.OutBack
+        );
     }
 
     #endregion
@@ -235,6 +315,7 @@ public class LeaderboardUI : MonoBehaviour
 
         _countdownPrefix = continueText;
         _countdownEndsAt = Time.time + secondsUntilNext;
+        _shownCountdown = -1;
 
         List<Entry> now = SortedBy(entries, previous: false);
 
@@ -245,24 +326,40 @@ public class LeaderboardUI : MonoBehaviour
 
         List<Entry> before = hasHistory ? SortedBy(entries, previous: true) : now;
 
+        // Only the top maxShownPlayers fit. Rows for anyone in the top before OR after this
+        // drawing are built; the list clips at the cutoff, so a row parked just below it
+        // slides up into view (climbed in) or down out of it (dropped out).
+        int shown = Mathf.Min(maxShownPlayers, now.Count);
+        var inTop = new HashSet<string>();
+        for (int i = 0; i < shown; i++)
+        {
+            inTop.Add(now[i].PlayerId);
+            inTop.Add(before[i].PlayerId);
+        }
+
         _roundList.Clear();
-        _roundList.style.height = now.Count * rowHeight;
+        _roundList.style.height = shown * rowHeight;
+        _roundList.style.overflow = Overflow.Hidden;
+        SetMoreLabel(_roundList, now.Count - shown);
 
         var rows = new Dictionary<string, RowRefs>();
         for (int i = 0; i < before.Count; i++)
         {
             Entry e = before[i];
+            if (!inTop.Contains(e.PlayerId))
+                continue;
+
             RowRefs refs = BuildRow(e, rowHeight, showGain: true, shownRank: hasHistory ? e.PreviousRank : e.Rank);
-            refs.Row.style.top = i * rowHeight;
+            refs.Row.style.top = Mathf.Min(i, shown) * rowHeight;
             _roundList.Add(refs.Row);
             rows[e.PlayerId] = refs;
 
             refs.Total.text = Format(hasHistory ? e.PreviousTotal : e.Total);
-            ShowLater(refs.Row, i * rowStagger, id);
+            ShowLater(refs.Row, Mathf.Min(i, shown) * rowStagger, id);
         }
 
         // Slide into the new order, update ranks, count the totals up
-        float reorderAt = reorderDelay + before.Count * rowStagger;
+        float reorderAt = reorderDelay + shown * rowStagger;
         After(reorderAt, id, () =>
         {
             for (int i = 0; i < now.Count; i++)
@@ -271,7 +368,7 @@ public class LeaderboardUI : MonoBehaviour
                 if (!rows.TryGetValue(e.PlayerId, out RowRefs refs))
                     continue;
 
-                refs.Row.style.top = i * rowHeight;
+                refs.Row.style.top = Mathf.Min(i, shown) * rowHeight;
                 SetRank(refs, e.Rank);
 
                 if (hasHistory && e.Total != e.PreviousTotal)
@@ -322,15 +419,18 @@ public class LeaderboardUI : MonoBehaviour
         After(crownAt, id, () =>
         {
             _podium.Query(className: "lb-podium-crown-wrap").ForEach(c => c.AddToClassList(ShownClass));
+            _crownShineFrom = Time.time + 0.8f; // let the drop finish first
         });
 
-        // Everyone else
+        // Everyone else, down to rank maxShownPlayers
         _othersList.Clear();
-        int others = Mathf.Max(0, sorted.Count - 3);
+        int listedUpTo = Mathf.Min(sorted.Count, maxShownPlayers);
+        int others = Mathf.Max(0, listedUpTo - 3);
         _othersCard.EnableInClassList(HiddenClass, others == 0);
         _othersList.style.height = others * othersRowHeight;
+        SetMoreLabel(_othersList, sorted.Count - listedUpTo);
 
-        for (int i = 3; i < sorted.Count; i++)
+        for (int i = 3; i < listedUpTo; i++)
         {
             Entry e = sorted[i];
             RowRefs refs = BuildRow(e, othersRowHeight, showGain: false, shownRank: e.Rank);
@@ -348,6 +448,8 @@ public class LeaderboardUI : MonoBehaviour
         _countUps.Clear();
         _countUpStartsAt = float.MaxValue;
         _bobbingCrowns.Clear();
+        _shiningCrowns.Clear();
+        _crownShineFrom = float.MaxValue;
 
         _root?.AddToClassList(HiddenClass);
     }
@@ -363,6 +465,8 @@ public class LeaderboardUI : MonoBehaviour
         _countUps.Clear();
         _countUpStartsAt = float.MaxValue;
         _bobbingCrowns.Clear();
+        _shiningCrowns.Clear();
+        _crownShineFrom = float.MaxValue;
 
         _root.RemoveFromClassList(HiddenClass);
         _roundView?.EnableInClassList(HiddenClass, mode != Mode.Round);
@@ -462,6 +566,7 @@ public class LeaderboardUI : MonoBehaviour
             crownWrap.Add(crown);
             slot.Add(crownWrap);
             _bobbingCrowns.Add(crown);
+            _shiningCrowns.Add((crown, rankColor));
         }
 
         VisualElement person = new();
@@ -499,6 +604,26 @@ public class LeaderboardUI : MonoBehaviour
         ShowLater(block, riseAt, id);
         ShowLater(person, riseAt + 0.3f, id);
         return slot;
+    }
+
+    /// <summary>"+N MORE" right under a list (one label per list, reused between shows).</summary>
+    private static void SetMoreLabel(VisualElement list, int hiddenCount)
+    {
+        VisualElement parent = list?.parent;
+        if (parent == null)
+            return;
+
+        Label more = parent.Q<Label>(className: "lb-more");
+        if (more == null)
+        {
+            more = new Label();
+            more.AddToClassList("lb-more");
+            more.AddToClassList("accent-dim-text");
+            parent.Insert(parent.IndexOf(list) + 1, more);
+        }
+
+        more.text = hiddenCount == 1 ? "+1 MORE PLAYER" : $"+{hiddenCount} MORE PLAYERS";
+        more.EnableInClassList(HiddenClass, hiddenCount <= 0);
     }
 
     private static VisualElement BuildAvatar(Entry e, string className)
@@ -593,12 +718,20 @@ public class LeaderboardUI : MonoBehaviour
 
     #region Utility
 
-    /// <summary>Sorted best first; ties by name so the order is stable.</summary>
+    /// <summary>
+    /// Sorted best first by the ranks GameManager gave (which already split ties); by score,
+    /// then name, only where a rank is missing.
+    /// </summary>
     private static List<Entry> SortedBy(IReadOnlyList<Entry> entries, bool previous)
     {
         List<Entry> list = new(entries);
         list.Sort((a, b) =>
         {
+            int rankA = previous ? a.PreviousRank : a.Rank;
+            int rankB = previous ? b.PreviousRank : b.Rank;
+            if (rankA > 0 && rankB > 0 && rankA != rankB)
+                return rankA.CompareTo(rankB);
+
             int scoreA = previous ? a.PreviousTotal : a.Total;
             int scoreB = previous ? b.PreviousTotal : b.Total;
             int byScore = scoreB.CompareTo(scoreA);

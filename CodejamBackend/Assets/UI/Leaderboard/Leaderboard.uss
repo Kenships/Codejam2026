@@ -91,6 +91,14 @@
     width: 100%;
 }
 
+/* "+N MORE PLAYERS" under a list cut to the top N (LeaderboardUI.maxShownPlayers) */
+.lb-more {
+    font-size: 20px;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    margin-top: 8px;
+}
+
 .lb-row {
     position: absolute;
     left: 0;
@@ -439,12 +447,26 @@
     justify-content: center;
 }
 
+.lb-countdown-row {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    margin-right: 22px;
+    min-width: 260px;
+}
+
 .lb-countdown {
     font-size: 22px;
     letter-spacing: 2px;
-    margin-right: 22px;
-    min-width: 260px;
     -unity-text-align: middle-right;
+}
+
+/* Fixed width so the prefix doesn't shift as the digits change */
+.lb-countdown__number {
+    min-width: 30px;
+    margin-left: 8px;
+    -unity-text-align: middle-left;
+    -unity-font-style: bold;
 }
 
 .lb-button.unity-button {

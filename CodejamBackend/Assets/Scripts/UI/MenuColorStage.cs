@@ -9,7 +9,9 @@ using Random = UnityEngine.Random;
 
 /// <summary>
 /// Manages the world-space ColorBody cubes for the Menu / Host Lobby screen:
-/// - Strictly caps the total number of cubes on screen to at most 30 (MaxTotalCubes = 30).
+/// - Caps the total number of cubes on screen at MaxTotalCubes (30), raised only as far as a
+///   big room needs to fit every player's cube plus a few greyscale ones (CubeBudget).
+/// - Seats up to 12 players on one ring around the card, and up to 32 on two rings.
 /// - Spawns differently sized greyscale cubes all around the screen that slowly meander
 ///   around the center UI card and occasionally merge with each other.
 /// - If a free cube grows too large (>= popRadiusThreshold), it pops — playing the same
@@ -22,8 +24,13 @@ using Random = UnityEngine.Random;
 /// </summary>
 public class MenuColorStage : MonoBehaviour
 {
-    public const int MaxPlayers = 12;
+    public const int MaxPlayers = GameSessionData.MaxPlayersLimit;
+    /// <summary>Seats on the inner ring; players past this sit on an outer ring.</summary>
+    public const int InnerRingSeats = 12;
+    private const int OuterRingSeats = MaxPlayers - InnerRingSeats;
     public const int MaxTotalCubes = 30;
+    /// <summary>Greyscale cubes kept around even in a full room, so joins can still merge two.</summary>
+    private const int MinFreeCubes = 4;
     private const int MaxShaderNeighbors = 4;
     private const float MaxBodySquash = 0.55f;
     private const float ContactTolerance = 0.02f;
@@ -48,6 +55,17 @@ public class MenuColorStage : MonoBehaviour
     [SerializeField, Min(0.3f)] private float popRadiusThreshold = 0.52f;
     [SerializeField, Min(0.3f)] private float minCharacterRadius = 0.46f;
     [SerializeField, Min(0.35f)] private float maxCharacterRadius = 0.64f;
+
+    [Title("Seat Rings")]
+    [Tooltip("Where the single ring sits (up to 12 players), from the card's edge (0) to the " +
+             "screen's edge (1), on X and Y.")]
+    [SerializeField] private Vector2 singleRingPlacement = new(0.58f, 0.62f);
+    [Tooltip("Where the inner ring moves to once the outer ring is in use (more than 12 players).")]
+    [SerializeField] private Vector2 crowdedInnerRingPlacement = new(0.12f, 0.15f);
+    [Tooltip("Where the outer ring sits (players 13+). Its seats fall between the inner ones.")]
+    [SerializeField] private Vector2 outerRingPlacement = new(1f, 1f);
+    [Tooltip("Size of outer-ring player cubes relative to inner-ring ones.")]
+    [SerializeField, Range(0.4f, 1f)] private float outerRingCharacterScale = 0.75f;
 
     [Title("Player Join Burst (Very Small Cubes)")]
     [SerializeField, Range(2, 6)] private int joinBurstCubeCount = 4;
@@ -175,7 +193,27 @@ public class MenuColorStage : MonoBehaviour
     public Camera StageCamera => stageCamera != null ? stageCamera : Camera.main;
     public IReadOnlyDictionary<string, PlayerCharacterView> PlayerViews => _players;
 
-    /// <summary>Total number of active cubes currently in the stage (never exceeds MaxTotalCubes = 30).</summary>
+    /// <summary>True while anyone sits on the outer ring (more than InnerRingSeats players).</summary>
+    public bool IsOuterRingInUse
+    {
+        get
+        {
+            for (int s = InnerRingSeats; s < MaxPlayers; s++)
+            {
+                if (_seats[s] != null)
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Most cubes on stage: MaxTotalCubes, raised in a big room so every player's cube fits
+    /// with MinFreeCubes greyscale cubes still around to merge for the next join.
+    /// </summary>
+    private int CubeBudget => Mathf.Max(MaxTotalCubes, _players.Count + MinFreeCubes);
+
+    /// <summary>Total number of active cubes currently in the stage (never exceeds CubeBudget).</summary>
     public int TotalActiveCubes
     {
         get
@@ -253,7 +291,7 @@ public class MenuColorStage : MonoBehaviour
                 reservedByPlayersAndMerges++;
         }
 
-        int maxAllowedFree = Mathf.Max(0, MaxTotalCubes - reservedByPlayersAndMerges);
+        int maxAllowedFree = Mathf.Max(0, CubeBudget - reservedByPlayersAndMerges);
         return Mathf.Min(targetFreeCubes, maxAllowedFree);
     }
 
@@ -265,7 +303,7 @@ public class MenuColorStage : MonoBehaviour
         int desired = GetDesiredFreeCubeCount();
         int safety = 0;
 
-        while (_freeCubes.Count < desired && TotalActiveCubes < MaxTotalCubes && safety < MaxTotalCubes)
+        while (_freeCubes.Count < desired && TotalActiveCubes < CubeBudget && safety < CubeBudget)
         {
             safety++;
             SpawnFreeGreyscaleCube(animatePop: _initialized);
@@ -284,7 +322,7 @@ public class MenuColorStage : MonoBehaviour
             return;
 
         int safety = 0;
-        while (_freeCubes.Count < minFreeNeeded && TotalActiveCubes < MaxTotalCubes && safety < MaxTotalCubes)
+        while (_freeCubes.Count < minFreeNeeded && TotalActiveCubes < CubeBudget && safety < CubeBudget)
         {
             safety++;
             SpawnFreeGreyscaleCube(animatePop: true);
@@ -297,7 +335,7 @@ public class MenuColorStage : MonoBehaviour
     private void MakeRoomInCubeBudget(int slotsNeeded)
     {
         int safety = 0;
-        while (TotalActiveCubes + slotsNeeded > MaxTotalCubes && _freeCubes.Count > 0 && safety < MaxTotalCubes)
+        while (TotalActiveCubes + slotsNeeded > CubeBudget && _freeCubes.Count > 0 && safety < CubeBudget)
         {
             safety++;
             int largestIndex = 0;
@@ -322,7 +360,7 @@ public class MenuColorStage : MonoBehaviour
 
     private ColorBody SpawnFreeGreyscaleCube(bool animatePop)
     {
-        if (colorBodyPrefab == null || TotalActiveCubes >= MaxTotalCubes)
+        if (colorBodyPrefab == null || TotalActiveCubes >= CubeBudget)
             return null;
 
         float radius = SampleVariedCubeRadius();
@@ -337,7 +375,7 @@ public class MenuColorStage : MonoBehaviour
         Vector2 initialImpulse,
         bool animatePop)
     {
-        if (colorBodyPrefab == null || TotalActiveCubes >= MaxTotalCubes)
+        if (colorBodyPrefab == null || TotalActiveCubes >= CubeBudget)
             return null;
 
         float grey = Random.Range(minGreyValue, maxGreyValue);
@@ -399,7 +437,7 @@ public class MenuColorStage : MonoBehaviour
         // Ensure we never exceed 30 total cubes
         MakeRoomInCubeBudget(count);
 
-        int availableSlots = Mathf.Max(0, MaxTotalCubes - TotalActiveCubes);
+        int availableSlots = Mathf.Max(0, CubeBudget - TotalActiveCubes);
         count = Mathf.Min(count, availableSlots);
 
         if (count <= 0)
@@ -593,7 +631,7 @@ public class MenuColorStage : MonoBehaviour
         else
         {
             MakeRoomInCubeBudget(1);
-            SpawnFinishedPlayerCharacter(view, seatPos, 0.54f, playerColor);
+            SpawnFinishedPlayerCharacter(view, seatPos, 0.54f * CharacterScaleFor(seatIndex), playerColor);
         }
     }
 
@@ -718,22 +756,42 @@ public class MenuColorStage : MonoBehaviour
     }
 
     /// <summary>
-    /// Computes the seat position around the center join screen starting from
-    /// Top-Left (seat 0 = 135 degrees) and going clockwise (-30 degrees per seat).
+    /// Computes the seat position around the center join screen, clockwise from the top-left.
+    /// Seats 0-11 are the inner ring (seat 0 = 135 degrees, -30 degrees per seat); seats 12+
+    /// are an outer ring whose seats fall between the inner ones. While nobody is on the outer
+    /// ring, the inner ring sits where the single ring always did; once someone is, it pulls
+    /// in toward the card to make room (seats glide there, see UpdateSeatPositions).
     /// </summary>
+    /// <summary>Outer-ring ("back row") player cubes are smaller.</summary>
+    private float CharacterScaleFor(int seatIndex) =>
+        seatIndex >= InnerRingSeats ? outerRingCharacterScale : 1f;
+
     public Vector3 GetClockwiseSeatWorldPosition(int seatIndex)
     {
         GetScreenWorldHalfExtents(out float halfW, out float halfH);
 
         float minRingX = _centerExclusionHalfExtents.x + 1.45f;
         float maxRingX = Mathf.Max(minRingX + 0.5f, halfW - 1.35f);
-        float ringX = Mathf.Lerp(minRingX, maxRingX, 0.58f);
 
         float minRingY = _centerExclusionHalfExtents.y + 1.05f;
         float maxRingY = Mathf.Max(minRingY + 0.25f, halfH - 1.15f);
-        float ringY = Mathf.Lerp(minRingY, maxRingY, 0.62f);
 
-        float angleDeg = 135f - (seatIndex % MaxPlayers) * (360f / MaxPlayers);
+        Vector2 placement;
+        float angleDeg;
+        if (seatIndex < InnerRingSeats)
+        {
+            placement = IsOuterRingInUse ? crowdedInnerRingPlacement : singleRingPlacement;
+            angleDeg = 135f - seatIndex * (360f / InnerRingSeats);
+        }
+        else
+        {
+            placement = outerRingPlacement;
+            int outerIndex = (seatIndex - InnerRingSeats) % OuterRingSeats;
+            angleDeg = 135f - (outerIndex + 0.5f) * (360f / OuterRingSeats);
+        }
+
+        float ringX = Mathf.Lerp(minRingX, maxRingX, placement.x);
+        float ringY = Mathf.Lerp(minRingY, maxRingY, placement.y);
         float rad = angleDeg * Mathf.Deg2Rad;
 
         float x = _centerExclusionCenter.x + Mathf.Cos(rad) * ringX;
@@ -1015,7 +1073,7 @@ public class MenuColorStage : MonoBehaviour
         // Intermittent spawning, strictly capped at MaxTotalCubes (30)
         if (Time.time >= _nextSpawnTime)
         {
-            if (_freeCubes.Count < desiredFree && TotalActiveCubes < MaxTotalCubes)
+            if (_freeCubes.Count < desiredFree && TotalActiveCubes < CubeBudget)
                 SpawnFreeGreyscaleCube(animatePop: true);
 
             ScheduleNextIntermittentSpawn();
@@ -1499,7 +1557,8 @@ public class MenuColorStage : MonoBehaviour
 
         if (m.IsPlayerJoinMerge && _players.TryGetValue(m.PlayerId, out PlayerCharacterView view))
         {
-            float charRadius = Mathf.Clamp(combinedRadius, minCharacterRadius, maxCharacterRadius);
+            float charRadius = Mathf.Clamp(combinedRadius, minCharacterRadius, maxCharacterRadius)
+                               * CharacterScaleFor(view.SeatIndex);
 
             Destroy(a.gameObject);
             Destroy(b.gameObject);

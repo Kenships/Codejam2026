@@ -19,7 +19,11 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(UIDocument))]
 public class DrawingPhaseController : MonoBehaviour
 {
-    private const int MaxSeats = 12;
+    // Icons fill an inner ring of 12, then an outer ring for the rest (up to the 32-player limit).
+    // While the outer ring is in use, both rings spread out and icons shrink (is-crowded).
+    private const int InnerRingSeats = 12;
+    private const int OuterRingSeats = GameSessionData.MaxPlayersLimit - InnerRingSeats;
+    private const string CrowdedClass = "is-crowded";
 
     [SerializeField, Required] private UIDocument document;
     [SerializeField, AssetsOnly] private AudioClip submitSound;
@@ -27,11 +31,6 @@ public class DrawingPhaseController : MonoBehaviour
     [Title("Rainbow Loading Shift")]
     [Tooltip("Matches frontend PlayPage.tsx (24 deg/s -> ~15s per full rainbow cycle).")]
     [SerializeField, Min(1f)] private float rainbowDegreesPerSecond = 24f;
-
-    [Title("Testing")]
-    [SerializeField] private bool showSimulateControls = true;
-
-    public event Action ContinueRequested;
 
     private VisualElement _root;
     private VisualElement _drawingRoot;
@@ -41,12 +40,12 @@ public class DrawingPhaseController : MonoBehaviour
     private Label _subtitle;
     private VisualElement _iconsLayer;
     private VisualElement _drawingCard;
-    private Label _drawingTitle;
+    private WaveText _drawingTitle;
     private Label _submissionCount;
     private Label _timerValue;
+    private VisualElement _submissionBadge;
+    private UiFx.TimerWarning _timerWarning; // red + pop + tick in the last seconds
     private Label _description;
-    private VisualElement _testRow;
-    private Button _continueButton;
 
     // Artist spotlight elements (shown after all player icons merge into the artist)
     private VisualElement _artistSpotlight;
@@ -57,8 +56,6 @@ public class DrawingPhaseController : MonoBehaviour
 
     private readonly Dictionary<string, VisualElement> _submittedIcons = new();
     private readonly List<VisualElement> _orderedIcons = new();
-    private readonly HashSet<Button> _hoveredButtons = new();
-    private readonly HashSet<Button> _focusedButtons = new();
 
     private float _rainbowHueDeg;
     private Color _currentRainbowColor = Color.red;
@@ -105,12 +102,12 @@ public class DrawingPhaseController : MonoBehaviour
         _subtitle = _root.Q<Label>("subtitle");
         _iconsLayer = _root.Q<VisualElement>("submitted-icons-layer");
         _drawingCard = _root.Q<VisualElement>("drawing-card");
-        _drawingTitle = _root.Q<Label>("drawing-title");
+        _drawingTitle = _root.Q<WaveText>("drawing-title");
         _submissionCount = _root.Q<Label>("submission-count");
         _timerValue = _root.Q<Label>("drawing-timer");
+        _submissionBadge = _root.Q<VisualElement>("submission-badge");
+        _timerWarning = new UiFx.TimerWarning(_timerValue);
         _description = _root.Q<Label>("drawing-description");
-        _testRow = _root.Q<VisualElement>("drawing-test-row");
-        _continueButton = _root.Q<Button>("next-phase");
 
         _artistSpotlight = _root.Q<VisualElement>("artist-spotlight");
         _artistSpotlightKicker = _root.Q<Label>("artist-spotlight-kicker");
@@ -118,23 +115,11 @@ public class DrawingPhaseController : MonoBehaviour
         _artistSpotlightPfp = _root.Q<VisualElement>("artist-spotlight-pfp");
         _artistSpotlightName = _root.Q<Label>("artist-spotlight-name");
 
-        if (_testRow != null)
-            _testRow.style.display = showSimulateControls ? DisplayStyle.Flex : DisplayStyle.None;
-
         if (_title != null)
             _title.OverlapAnimate = true;
 
-        RegisterButton(_continueButton, OnContinueClicked);
-
         ApplyRainbowColor(Color.HSVToRGB(0f, 1f, 1f));
         SetVisible(_isVisible);
-    }
-
-    private void OnDisable()
-    {
-        UnregisterButton(_continueButton, OnContinueClicked);
-        _hoveredButtons.Clear();
-        _focusedButtons.Clear();
     }
 
     private void Update()
@@ -184,8 +169,12 @@ public class DrawingPhaseController : MonoBehaviour
             _title.style.display = DisplayStyle.Flex;
     }
 
-    /// <summary>Resets the Drawing Phase UI for a fresh drawing round.</summary>
-    public void BeginDrawingRound(int expectedPlayers, float durationSeconds)
+    /// <summary>
+    /// Resets the Drawing Phase UI for a fresh drawing round. <paramref name="expectedPlayers"/>
+    /// is how many artists are drawing; <paramref name="totalPlayers"/> (when larger) means the
+    /// rest are only guessing this game.
+    /// </summary>
+    public void BeginDrawingRound(int expectedPlayers, float durationSeconds, int totalPlayers = 0)
     {
         if (_transitionRoutine != null)
         {
@@ -206,11 +195,18 @@ public class DrawingPhaseController : MonoBehaviour
             _drawingCard.style.display = DisplayStyle.Flex;
 
         if (_subtitle != null)
-            _subtitle.text = "Everyone is drawing their secret hue";
+        {
+            _subtitle.text = totalPlayers <= _expectedPlayerCount
+                ? "Everyone is drawing their secret hue"
+                : _expectedPlayerCount == 1
+                    ? "1 artist is drawing their secret hue"
+                    : $"{_expectedPlayerCount} artists are drawing their secret hues";
+        }
 
         _artistSpotlight?.AddToClassList("is-hidden");
 
         ClearSubmittedIcons();
+        _timerWarning?.Reset();
         SetRemainingSeconds(durationSeconds);
         RefreshProgressLabels();
         SetVisible(true);
@@ -388,6 +384,8 @@ public class DrawingPhaseController : MonoBehaviour
     {
         if (_timerValue != null)
             _timerValue.text = $"{Mathf.Max(0, Mathf.CeilToInt(remainingSeconds))}";
+
+        _timerWarning?.Update(remainingSeconds);
     }
 
     /// <summary>
@@ -411,6 +409,7 @@ public class DrawingPhaseController : MonoBehaviour
 
             LayoutSubmittedIcons();
             AnimateIconPopIn(iconRoot);
+            UiFx.Pop(_submissionBadge);
 
             Vector2 pos = ComputeClockwisePanelPosition(_orderedIcons.Count - 1);
             if (_background != null)
@@ -512,6 +511,8 @@ public class DrawingPhaseController : MonoBehaviour
         if (_iconsLayer == null || _orderedIcons.Count == 0)
             return;
 
+        _iconsLayer.EnableInClassList(CrowdedClass, _orderedIcons.Count > InnerRingSeats);
+
         for (int i = 0; i < _orderedIcons.Count; i++)
         {
             Vector2 pos = ComputeClockwisePanelPosition(i);
@@ -522,8 +523,9 @@ public class DrawingPhaseController : MonoBehaviour
     }
 
     /// <summary>
-    /// Top-left clockwise ring (seat 0 = 135 deg, stepping -30 deg clockwise) around the center card,
-    /// matching the join screen layout.
+    /// Top-left clockwise rings around the center card, matching the join screen layout:
+    /// seats 0-11 on the inner ring (seat 0 = 135 deg, -30 deg per seat), seats 12+ on an outer
+    /// ring whose seats sit between the inner ones.
     /// </summary>
     private Vector2 ComputeClockwisePanelPosition(int seatIndex)
     {
@@ -533,11 +535,26 @@ public class DrawingPhaseController : MonoBehaviour
 
         float cx = w * 0.5f;
         float cy = h * 0.5f;
-        float rx = w * 0.36f;
-        float ry = h * 0.35f;
 
-        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise (-30 deg/step)
-        float angleDeg = 135f - (seatIndex % MaxSeats) * (360f / MaxSeats);
+        bool crowded = _orderedIcons.Count > InnerRingSeats;
+        bool outer = seatIndex >= InnerRingSeats;
+
+        float rx, ry, angleDeg;
+        if (!outer)
+        {
+            rx = w * (crowded ? 0.335f : 0.36f);
+            ry = h * (crowded ? 0.33f : 0.35f);
+            angleDeg = 135f - seatIndex * (360f / InnerRingSeats);
+        }
+        else
+        {
+            rx = w * 0.455f;
+            ry = h * 0.43f;
+            int outerIndex = (seatIndex - InnerRingSeats) % OuterRingSeats;
+            angleDeg = 135f - (outerIndex + 0.5f) * (360f / OuterRingSeats);
+        }
+
+        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise
         float rad = angleDeg * Mathf.Deg2Rad;
 
         float x = cx + Mathf.Cos(rad) * rx;
@@ -555,23 +572,13 @@ public class DrawingPhaseController : MonoBehaviour
             _submissionCount.text = $"{submitted} / {_expectedPlayerCount} SUBMITTED";
 
         if (_drawingTitle != null)
-            _drawingTitle.text = allDone ? "ALL DRAWINGS SUBMITTED!" : "DRAWING IN PROGRESS...";
+            _drawingTitle.Text = allDone ? "ALL DRAWINGS SUBMITTED!" : "DRAWING IN PROGRESS...";
 
         if (_description != null)
         {
             _description.text = allDone
                 ? "Everyone is ready — moving to the next phase!"
                 : "Draw a clue on your phone and submit before time runs out";
-        }
-
-        // No skipping ahead while players are still preparing their drawings:
-        // with nothing submitted there would be nothing to guess.
-        if (_continueButton != null)
-        {
-            bool canContinue = submitted > 0;
-            _continueButton.SetEnabled(canContinue);
-            _continueButton.style.opacity = canContinue ? 1f : 0.45f;
-            RefreshButton(_continueButton);
         }
     }
 
@@ -583,6 +590,7 @@ public class DrawingPhaseController : MonoBehaviour
         _root.Query(className: "rainbow-text").ForEach(e => e.style.color = rainbow);
         _root.Query(className: "rainbow-dim-text").ForEach(e => e.style.color = dim);
         _root.Query(className: "rainbow-border").ForEach(e => SetBorderColor(e, rainbow));
+        _timerWarning?.ReapplyColor(); // keep the low-time red over the rainbow
 
         if (_background != null)
             _background.accentColor = rainbow;
@@ -591,81 +599,9 @@ public class DrawingPhaseController : MonoBehaviour
 
         if (_title != null)
             _title.BaseColor = rainbow;
-
-        RefreshButton(_continueButton);
     }
 
-    #region Buttons
-
-    private void OnContinueClicked()
-    {
-        if (_submittedIcons.Count == 0)
-            return;
-
-        GameAudioController.EnsureExists().PlayButtonClick();
-        ContinueRequested?.Invoke();
-    }
-
-    private void RegisterButton(Button button, Action onClick)
-    {
-        if (button == null)
-            return;
-
-        button.clicked += onClick;
-        button.RegisterCallback<PointerEnterEvent, Button>(OnButtonEnter, button);
-        button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonLeave, button);
-        button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
-        button.RegisterCallback<FocusOutEvent, Button>(OnButtonFocusOut, button);
-    }
-
-    private void UnregisterButton(Button button, Action onClick)
-    {
-        if (button == null)
-            return;
-
-        button.clicked -= onClick;
-        button.UnregisterCallback<PointerEnterEvent, Button>(OnButtonEnter);
-        button.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonLeave);
-        button.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
-        button.UnregisterCallback<FocusOutEvent, Button>(OnButtonFocusOut);
-    }
-
-    private void OnButtonEnter(PointerEnterEvent evt, Button button)
-    {
-        _hoveredButtons.Add(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonLeave(PointerLeaveEvent evt, Button button)
-    {
-        _hoveredButtons.Remove(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonFocusIn(FocusInEvent evt, Button button)
-    {
-        _focusedButtons.Add(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonFocusOut(FocusOutEvent evt, Button button)
-    {
-        _focusedButtons.Remove(button);
-        RefreshButton(button);
-    }
-
-    private void RefreshButton(Button button)
-    {
-        if (button == null)
-            return;
-
-        bool active = (_hoveredButtons.Contains(button) || _focusedButtons.Contains(button)) &&
-                      button.enabledSelf;
-
-        SetBorderColor(button, _currentRainbowColor);
-        button.style.backgroundColor = active ? _currentRainbowColor : new Color(0f, 0f, 0f, 0.45f);
-        button.style.color = active ? Color.black : _currentRainbowColor;
-    }
+    #region Helpers
 
     private static void SetBorderColor(VisualElement element, Color color)
     {

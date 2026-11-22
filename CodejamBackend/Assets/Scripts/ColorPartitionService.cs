@@ -115,6 +115,36 @@ public class ColorPartitionService
         return pieces;
     }
 
+    /// <summary>
+    /// Picks [minUnitArea, maxUnitArea] for splitting <paramref name="totalArea"/>
+    /// evenly between <paramref name="colorCount"/> colours so the piece count stays
+    /// bounded: each colour gets between ceil(k / 2) and k pieces, where
+    /// k = clamp(floor(maxPieces / colorCount), minPiecesPerColor, maxPiecesPerColor).
+    /// Few colours -> few, large pieces; many colours -> more, smaller pieces, with the
+    /// total capped at maxPieces (only exceeded when needed to give every colour
+    /// minPiecesPerColor pieces).
+    /// </summary>
+    public static (float minUnitArea, float maxUnitArea) GetUnitAreaRange(
+        int colorCount,
+        float totalArea,
+        int maxPieces,
+        int minPiecesPerColor,
+        int maxPiecesPerColor)
+    {
+        colorCount = Math.Max(1, colorCount);
+        minPiecesPerColor = Math.Max(1, minPiecesPerColor);
+        maxPiecesPerColor = Math.Max(minPiecesPerColor, maxPiecesPerColor);
+
+        int mostPerColor = Mathf.Clamp(maxPieces / colorCount, minPiecesPerColor, maxPiecesPerColor);
+        int fewestPerColor = Math.Max(minPiecesPerColor, (mostPerColor + 1) / 2);
+
+        float areaPerColor = totalArea / colorCount;
+
+        // k pieces fit iff k * min <= areaPerColor <= k * max, so these bounds allow
+        // exactly fewestPerColor..mostPerColor pieces per colour.
+        return (areaPerColor / mostPerColor, areaPerColor / fewestPerColor);
+    }
+
     public static float AreaToRadius(float area) =>
         Mathf.Sqrt(Mathf.Max(0f, area) / Mathf.PI);
 

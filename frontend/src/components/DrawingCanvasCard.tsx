@@ -8,12 +8,15 @@ import {
 } from 'react'
 import { Check, Eraser, Maximize2, Minimize2, Trash2, Undo2 } from 'lucide-react'
 
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   MAX_CANVAS_PX,
   compressWhiteDrawingImage,
   renderStrokesToContext,
+  type CompressedDrawingImage,
+  type DrawingMime,
   type DrawingStroke,
   type NormalizedPoint,
 } from '@/lib/drawingCodec'
@@ -26,10 +29,10 @@ export interface DrawingSubmission {
   strokes: DrawingStroke[]
   /** Uncompressed white-on-black data URL for local preview */
   imageDataUrl: string
-  /** GZIP-compressed image bytes encoded as base64 (no data: prefix) */
+  /** GZIP-compressed 1-bit bitmap encoded as base64 (no data: prefix) */
   imageBase64: string
-  mime: 'image/png' | 'image/jpeg'
-  compression: 'gzip'
+  mime: DrawingMime
+  compression: CompressedDrawingImage['compression']
   width: number
   height: number
 }
@@ -496,7 +499,7 @@ export function DrawingCanvasCard({
             <div className="flex items-center gap-1.5">
               <Check className="h-4 w-4 text-(--hue)" />
               <span className="text-base sm:text-lg text-(--hue)">
-                Waiting for other players to finish...
+                Waiting for other players to finish<BouncingDots />
               </span>
             </div>
           </div>

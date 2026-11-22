@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Check, RotateCcw } from 'lucide-react'
 
+import { TutorialTabs } from '@/components/HowToPlay'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -10,45 +12,30 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { decompressDrawingImageToDataUrl } from '@/lib/drawingCodec'
+import { decompressDrawingImageToDataUrl, type DrawingMime } from '@/lib/drawingCodec'
 import { relayClient } from '@/lib/relayClient'
 
 export interface IncomingRoundDrawing {
   /** GZIP-compressed Base64 image received from the relay/host */
   imageBase64: string
-  mime?: 'image/png' | 'image/jpeg'
+  mime?: DrawingMime
   prompt: string
   artistName?: string
 }
 
-interface PlayingBoardCardProps {
-  hue: number | null
-  onHueChange: (hue: number) => void
-  onResetHue: () => void
-  drawing: IncomingRoundDrawing | null
-  /** Force submitted/waiting state for dev preview */
-  forceSubmitted?: boolean
-  onGuessSubmitted?: (guessedHex: string) => void
-}
-
-export function PlayingBoardCard({
-  hue,
-  onHueChange,
-  onResetHue,
+// Decompresses a round drawing and shows its white strokes tinted to `color`
+export function DrawingViewport({
   drawing,
-  forceSubmitted = false,
-  onGuessSubmitted,
-}: PlayingBoardCardProps) {
+  color,
+}: {
+  drawing: IncomingRoundDrawing | null
+  color: string
+}) {
   const [decompressedState, setDecompressedState] = useState<{
     sourceBase64: string
     url: string
   } | null>(null)
-  const [submittedGuess, setSubmittedGuess] = useState<{
-    sourceBase64: string
-    hex: string
-  } | null>(null)
 
-  const pickedColor = hue === null ? '#ffffff' : hueToHex(hue)
   const imageBase64 = drawing?.imageBase64 ?? ''
   const mime = drawing?.mime ?? 'image/png'
 
@@ -58,10 +45,6 @@ export function PlayingBoardCard({
       : ''
   const isDecompressing =
     Boolean(imageBase64) && decompressedState?.sourceBase64 !== imageBase64
-  const submittedHex =
-    submittedGuess?.sourceBase64 === imageBase64 ? submittedGuess.hex : null
-  const isSubmitted = submittedHex !== null || forceSubmitted
-  const displayColor = submittedHex ?? pickedColor
 
   // Decompress incoming GZIP+Base64 image whenever a new round drawing arrives
   useEffect(() => {
@@ -85,6 +68,67 @@ export function PlayingBoardCard({
       cancelled = true
     }
   }, [imageBase64, mime])
+
+  return (
+    <div className="relative mx-auto aspect-square w-full max-w-[min(512px,40dvh)] overflow-hidden border-2 border-(--hue) bg-black flex items-center justify-center">
+      {isDecompressing ? (
+        <span className="text-base text-(--hue)/70">
+          Decompressing drawing<BouncingDots />
+        </span>
+      ) : decompressedUrl ? (
+        <>
+          <img
+            src={decompressedUrl}
+            alt={drawing?.prompt || 'Artist clue drawing'}
+            draggable={false}
+            className="block h-full w-full object-contain select-none"
+          />
+          {/* Multiply blend turns #ffffff strokes into `color` while keeping #000000 black */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 mix-blend-multiply"
+            style={{ backgroundColor: color }}
+          />
+        </>
+      ) : (
+        <span className="px-4 text-center text-base text-(--hue)/70">
+          Waiting for artist drawing<BouncingDots />
+        </span>
+      )}
+    </div>
+  )
+}
+
+interface PlayingBoardCardProps {
+  hue: number | null
+  onHueChange: (hue: number) => void
+  onResetHue: () => void
+  drawing: IncomingRoundDrawing | null
+  /** Force submitted/waiting state for dev preview */
+  forceSubmitted?: boolean
+  onGuessSubmitted?: (guessedHex: string) => void
+}
+
+export function PlayingBoardCard({
+  hue,
+  onHueChange,
+  onResetHue,
+  drawing,
+  forceSubmitted = false,
+  onGuessSubmitted,
+}: PlayingBoardCardProps) {
+  const [submittedGuess, setSubmittedGuess] = useState<{
+    sourceBase64: string
+    hex: string
+  } | null>(null)
+
+  const pickedColor = hue === null ? '#ffffff' : hueToHex(hue)
+  const imageBase64 = drawing?.imageBase64 ?? ''
+
+  const submittedHex =
+    submittedGuess?.sourceBase64 === imageBase64 ? submittedGuess.hex : null
+  const isSubmitted = submittedHex !== null || forceSubmitted
+  const displayColor = submittedHex ?? pickedColor
 
   const handleHueChange = (nextHue: number) => {
     if (isSubmitted) return
@@ -124,44 +168,25 @@ export function PlayingBoardCard({
         </CardHeader>
 
         <CardContent className="flex flex-col items-center gap-3 px-3 sm:px-4 pb-4">
-          {/* Decompressed drawing viewport (white strokes tinted to displayColor via multiply blend) */}
-          <div className="relative mx-auto aspect-square w-full max-w-[min(512px,40dvh)] overflow-hidden border-2 border-(--hue) bg-black flex items-center justify-center">
-            {isDecompressing ? (
-              <span className="text-base text-(--hue)/70">
-                Decompressing drawing...
-              </span>
-            ) : decompressedUrl ? (
-              <>
-                <img
-                  src={decompressedUrl}
-                  alt={drawing?.prompt || 'Artist clue drawing'}
-                  draggable={false}
-                  className="block h-full w-full object-contain select-none"
-                />
-                {/* Multiply blend turns #ffffff strokes into displayColor while keeping #000000 black */}
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 mix-blend-multiply"
-                  style={{ backgroundColor: displayColor }}
-                />
-              </>
-            ) : (
-              <span className="px-4 text-center text-base text-(--hue)/70">
-                Waiting for artist drawing...
-              </span>
-            )}
-          </div>
-
           {isSubmitted ? (
-            <div className="flex w-full flex-col items-center gap-1 border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
-              <div className="flex items-center gap-1.5">
-                <Check className="h-4 w-4 text-(--hue)" />
-                <span className="text-base sm:text-lg text-(--hue)">
-                  Wait for other players to submit...
-                </span>
+            <>
+              <TutorialTabs label="Your Guess">
+                <DrawingViewport drawing={drawing} color={displayColor} />
+              </TutorialTabs>
+              <div className="flex w-full flex-col items-center gap-1 border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
+                <div className="flex items-center gap-1.5">
+                  <Check className="h-4 w-4 text-(--hue)" />
+                  <span className="text-base sm:text-lg text-(--hue)">
+                    Wait for other players to submit<BouncingDots />
+                  </span>
+                </div>
               </div>
-            </div>
+            </>
           ) : (
+            <DrawingViewport drawing={drawing} color={displayColor} />
+          )}
+
+          {!isSubmitted && (
             <div className="flex w-full items-center justify-between gap-2">
               <Button
                 type="button"

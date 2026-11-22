@@ -22,6 +22,12 @@ namespace Core.AudioSystem
         [SerializeField, AssetsOnly] private AudioClip joinSound;
         [SerializeField, AssetsOnly] private AudioClip bubbleMerge;
 
+        [Title("Countdown Tick (last 3 seconds of a timer)")]
+        [Tooltip("Played quietly and faded out fast so it reads as a soft tick (the click clip works well).")]
+        [SerializeField, AssetsOnly] private AudioClip countdownTick;
+        [SerializeField, Range(0f, 1f)] private float countdownTickVolume = 0.35f;
+        [SerializeField, Min(0.01f)] private float countdownTickFadeSeconds = 0.18f;
+
         [Title("Reveal Outcome SFX")]
         [SerializeField, AssetsOnly] private AudioClip goodGuess;
         [SerializeField, AssetsOnly] private AudioClip mediocreGuess;
@@ -125,6 +131,28 @@ namespace Core.AudioSystem
                 .RandomizePitch()
                 .Create()
                 .Play();
+        }
+
+        /// <summary>
+        /// Soft tick for the last seconds of a timer: quiet, faded straight out, and a little
+        /// higher each second (3 = normal pitch, 2 = higher, 1 = highest).
+        /// </summary>
+        public void PlayCountdownTick(int secondsLeft)
+        {
+            if (countdownTick == null || AudioManager.Instance == null)
+                return;
+
+            float pitch = 1f + Mathf.Clamp(3 - secondsLeft, 0, 2) * 0.08f;
+
+            IAudioPlayer tick = AudioManager.Instance
+                .NewAudio(countdownTick)
+                .OnChannel(AudioType.UI)
+                .SetVolume(countdownTickVolume)
+                .SetPitch(pitch)
+                .Create();
+
+            tick.Play();
+            tick.FadeVolume(0f, countdownTickFadeSeconds);
         }
 
         /// <summary>

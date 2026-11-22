@@ -1,6 +1,6 @@
 export const ROOM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
 export const ROOM_CODE_LENGTH = 4;
-export const MAX_PLAYERS = 12;
+export const MAX_PLAYERS = 32;
 export const NAME_MAX_LENGTH = 16;
 
 export type ErrorCode = (

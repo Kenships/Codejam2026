@@ -4,17 +4,20 @@ import { useNavigate, useParams } from 'react-router'
 import PixelBlast from '@/components/PixelBlast'
 import { CategoryPickerCard } from '@/components/CategoryPickerCard'
 import { DrawingCanvasCard } from '@/components/DrawingCanvasCard'
+import { HowToPlay, TutorialTabs } from '@/components/HowToPlay'
 import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
 import {
+  DrawingViewport,
   PlayingBoardCard,
   type IncomingRoundDrawing,
 } from '@/components/PlayingBoardCard'
 import { RoundResultsCard } from '@/components/RoundResultsCard'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
 import { TrueHueTitle } from '@/components/TrueHueTitle'
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { createMockCompressedDrawing } from '@/lib/drawingCodec'
+import { createMockCompressedDrawing, toDrawingMime } from '@/lib/drawingCodec'
 import { normalizeRoomCode, validateName, validateRoomCode } from '@/lib/protocol'
 import { DEV_MOCK_MODE, relayClient, RelayJoinError } from '@/lib/relayClient'
 import type { PlayerRoundResult } from '@/lib/results'
@@ -229,7 +232,7 @@ export function PlayPage() {
         setGuessHue(null)
         setIncomingDrawing({
           imageBase64: d.image,
-          mime: d.mime === 'image/jpeg' ? 'image/jpeg' : 'image/png',
+          mime: toDrawingMime(d.mime),
           prompt: typeof d.prompt === 'string' ? d.prompt : '',
           artistName: typeof d.artistName === 'string' ? d.artistName : undefined,
         })
@@ -316,7 +319,7 @@ export function PlayPage() {
 
   // Any status other than 'joined' always falls back to the waiting/loading screen
   const activePhase: GamePhase = status !== 'joined' ? 'waiting' : gamePhase
-  // Mid-game joiners in phase "drawing" who never received `your_target` see a waiting screen
+  // In phase "drawing" without `your_target` (not an artist this game, or joined mid-game): waiting screen
   const isDrawingWaiting = activePhase === 'drawing' && drawingTarget === null
   const isWaitingScreen =
     activePhase === 'waiting' ||
@@ -377,15 +380,15 @@ export function PlayPage() {
   const renderWaitingTitle = () => {
     switch (status) {
       case 'connecting':
-        return 'Joining room...'
+        return <>Joining room<BouncingDots /></>
       case 'reconnecting':
-        return 'Reconnecting...'
+        return <>Reconnecting<BouncingDots /></>
       case 'host_lost':
-        return 'Host disconnected...'
+        return <>Host disconnected<BouncingDots /></>
       case 'disconnected':
         return 'Disconnected'
       default:
-        return 'Waiting for players...'
+        return <>Waiting for players<BouncingDots /></>
     }
   }
 
@@ -433,7 +436,9 @@ export function PlayPage() {
                     )}
                   </div>
                   {status !== 'disconnected' && (
-                    <LobbyPfpCanvas inkColor={waitingColor} />
+                    <TutorialTabs key="avatar" label="Your Avatar">
+                      <LobbyPfpCanvas inkColor={waitingColor} />
+                    </TutorialTabs>
                   )}
                   {status === 'disconnected' && (
                     <Button
@@ -470,10 +475,10 @@ export function PlayPage() {
                 <div className="flex flex-col gap-2 p-2">
                   <CardHeader>
                     <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
-                      Round in Progress
+                      Artists Are Drawing
                     </CardTitle>
                     <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                      Round in progress, you&apos;ll join in when guessing starts
+                      You&apos;re guessing this game. Hang tight, guessing starts once the artists are done<BouncingDots />
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
@@ -489,6 +494,7 @@ export function PlayPage() {
                         </p>
                       )}
                     </div>
+                    <HowToPlay />
                   </CardContent>
                 </div>
               </Card>
@@ -539,7 +545,7 @@ export function PlayPage() {
                     Drawing Submitted!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    Waiting for other players to finish drawing...
+                    Waiting for other players to finish drawing<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
@@ -555,6 +561,13 @@ export function PlayPage() {
                       </p>
                     )}
                   </div>
+                  {/* key: each screen starts on its own tab instead of inheriting the last screen's */}
+                  <TutorialTabs key="drawing" label="Your Drawing">
+                    <DrawingViewport
+                      drawing={incomingDrawing}
+                      color={drawingTarget?.hex ?? '#ffffff'}
+                    />
+                  </TutorialTabs>
                 </CardContent>
               </div>
             </Card>
@@ -589,7 +602,7 @@ export function PlayPage() {
                     Thanks for Playing!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    Waiting for host to start another round...
+                    Waiting for host to start another round<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-3 pb-4 text-center text-(--hue)">
@@ -605,6 +618,7 @@ export function PlayPage() {
                       </p>
                     )}
                   </div>
+                  <HowToPlay />
 
                   <Button
                     type="button"

@@ -122,6 +122,19 @@
     text-shadow: 0 0 12px rgb(0, 0, 0);
 }
 
+.drawing-root .wave-text {
+    flex-direction: row;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+/* letter-spacing doesn't apply between WaveText's per-character Labels: redone as a margin */
+.drawing-root .wave-text__char {
+    margin: 0 1.4px 0 0;
+    padding: 0;
+    letter-spacing: 0;
+}
+
 .drawing-root .drawing-badge {
     padding: 4px 12px;
     border-width: 2px;
@@ -175,33 +188,6 @@
     text-shadow: 0 0 8px rgb(0, 0, 0);
 }
 
-/* ---- Buttons ---- */
-
-.drawing-root .drawing-test-row {
-    width: 100%;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    margin-top: 4px;
-}
-
-.drawing-root .drawing-button.unity-button {
-    min-width: 165px;
-    height: 44px;
-    margin: 0 6px;
-    padding: 6px 18px;
-    border-width: 2px;
-    border-radius: 0;
-    border-color: rgb(255, 255, 255);
-    background-color: rgba(0, 0, 0, 0.45);
-    color: rgb(255, 255, 255);
-    font-size: 18px;
-    -unity-font-style: bold;
-    letter-spacing: 1.8px;
-    -unity-text-align: middle-center;
-    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
-}
-
 /* ---- Submitted Player Icons (Clockwise Around Center Card, Like Join Screen) ---- */
 
 .drawing-root .submitted-player-icon {
@@ -252,6 +238,31 @@
     -unity-text-align: middle-center;
     white-space: nowrap;
     text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+/* More than 12 icons: a second ring opens up (DrawingPhaseController), so everything shrinks */
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__cube {
+    width: 62px;
+    height: 62px;
+    margin-bottom: 6px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__pfp {
+    width: 46px;
+    height: 46px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__check {
+    right: -8px;
+    top: -8px;
+    padding: 1px 4px;
+    font-size: 10px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__name {
+    padding: 1px 6px;
+    font-size: 15px;
+    letter-spacing: 1px;
 }
 
 .drawing-root .is-hidden {

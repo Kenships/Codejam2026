@@ -79,6 +79,7 @@ public class RevealUI : MonoBehaviour
     private Label _verdict;
     private VisualElement _guesses;
     private Button _playAgain;
+    private GlintOverlay _playAgainGlint; // sweeps across the button once the result is in
 
     private RevealController _bound;
     private Sequence _resultSequence;
@@ -219,6 +220,7 @@ public class RevealUI : MonoBehaviour
         _verdict = _root.Q<Label>("verdict");
         _guesses = _root.Q<VisualElement>("guesses");
         _playAgain = _root.Q<Button>("play-again");
+        _playAgainGlint = _root.Q<GlintOverlay>("play-again-glint");
     }
 
     /// <summary>Sizes the header and result bands to the space the camera leaves.</summary>
@@ -283,7 +285,13 @@ public class RevealUI : MonoBehaviour
                 percent,
                 new TweenSettings(countUpDuration, countUpEase),
                 SetMatchText
-            ));
+            ))
+            // Result is in: draw the eye to the next step
+            .ChainCallback(() =>
+            {
+                if (_playAgainGlint != null)
+                    _playAgainGlint.Active = true;
+            });
     }
 
     private void OnCleared() => HideAll(instant: false);
@@ -384,6 +392,9 @@ public class RevealUI : MonoBehaviour
     {
         StopResultSequence();
 
+        if (_playAgainGlint != null)
+            _playAgainGlint.Active = false;
+
         foreach (VisualElement element in new[] { _header, _mixedTag, _trueTag, _result })
         {
             if (element == null)
@@ -457,27 +468,6 @@ public class RevealUI : MonoBehaviour
         SetBorderColor(_playAgain, _accent);
         _playAgain.style.backgroundColor = _buttonActive ? _accent : ButtonBackground;
         _playAgain.style.color = _buttonActive ? Color.black : _accent;
-    }
-
-    #endregion
-
-    #region Debug
-
-    [Title("Debug (Play Mode)")]
-    [Button]
-    public void PreviewResult()
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("RevealUI preview only works in Play mode.");
-            return;
-        }
-
-        Color mixed = Color.HSVToRGB(0.55f, 0.8f, 0.9f);
-        Color truth = Color.HSVToRGB(0.6f, 1f, 1f);
-
-        Show(_header);
-        OnRevealed(new RevealResult(mixed, truth, new[] { Color.red, Color.green, Color.blue, Color.yellow }));
     }
 
     #endregion

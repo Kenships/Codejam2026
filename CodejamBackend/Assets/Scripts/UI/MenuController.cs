@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Alchemy.Inspector;
 using Codejam.Networking;
 using Core.AudioSystem;
+using PrimeTween;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
@@ -22,11 +23,21 @@ public class MenuController : MonoBehaviour
 {
     public const int NameMaxLength = 16;
     public const int RoomCodeLength = 4;
-    /// <summary>Seats in this game, picked on the Create Game screen (up to 12).</summary>
+    /// <summary>Seats in this game, picked on the Create Game screen (up to GameSessionData.MaxPlayersLimit).</summary>
     public static int MaxPlayers => GameSessionData.MaxPlayers;
 
     /// <summary>Drawing / guessing time step on the Create Game screen.</summary>
     private const int PhaseSecondsStep = 10;
+
+    /// <summary>Holding a settings stepper repeats it: first repeat after this long, then every interval.</summary>
+    private const long StepperRepeatDelayMs = 400;
+    private const long StepperRepeatIntervalMs = 70;
+
+    /// <summary>On the lobby labels layer once the outer ring of seats is in use (smaller names).</summary>
+    private const string CrowdedClass = "is-crowded";
+
+    /// <summary>On a settings stepper that can't go further (dimmed, no hover fill).</summary>
+    private const string AtLimitClass = "is-at-limit";
     private const string RoomCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ";
 
     // Tailwind red-400
@@ -82,11 +93,15 @@ public class MenuController : MonoBehaviour
     private VisualElement _createCard;
     private Label _createError;
     private Button _createButton;
+    private WaveText _createLabel; // the button's text; "CREATING ROOM..." dots hop
 
     // Create Game settings steppers
     private Button _maxPlayersDown;
     private Button _maxPlayersUp;
     private Label _maxPlayersValue;
+    private Button _artistsDown;
+    private Button _artistsUp;
+    private Label _artistsValue;
     private Button _drawingTimeDown;
     private Button _drawingTimeUp;
     private Label _drawingTimeValue;
@@ -96,10 +111,13 @@ public class MenuController : MonoBehaviour
 
     // Host Lobby view elements (lobby card + QR panel side by side, join site below)
     private VisualElement _lobbyView;
-    private Label _roomCodeDisplay;
-    private Label _lobbyTitle;
+    private WaveText _roomCodeDisplay;   // letters hop in a wave every few seconds
+    private WaveText _lobbyTitle;        // trailing "..." bounce while waiting
     private Label _lobbyDescription;
     private Label _playerCountLabel;
+    private VisualElement _playerCountBadge;
+    private GlintOverlay _startMatchGlint; // sweeps across START MATCH once it can be pressed
+    private int _shownPlayerCount = -1;
     private Label _lobbyError;
     private Button _backButton;
     private Button _startMatchButton;
@@ -115,6 +133,7 @@ public class MenuController : MonoBehaviour
 
     private readonly List<LobbyPlayer> _players = new();
     private readonly Dictionary<string, Label> _playerNameLabels = new();
+    private readonly HashSet<Label> _fadingNameLabels = new();
     private readonly HashSet<Button> _hoveredButtons = new();
     private readonly HashSet<Button> _focusedButtons = new();
 
@@ -177,10 +196,14 @@ public class MenuController : MonoBehaviour
         _createCard = _root.Q<VisualElement>("card");
         _createError = _root.Q<Label>("error");
         _createButton = _root.Q<Button>("create-game") ?? _root.Q<Button>("join");
+        _createLabel = _createButton?.Q<WaveText>("create-label");
 
         _maxPlayersDown = _root.Q<Button>("max-players-down");
         _maxPlayersUp = _root.Q<Button>("max-players-up");
         _maxPlayersValue = _root.Q<Label>("max-players-value");
+        _artistsDown = _root.Q<Button>("artists-down");
+        _artistsUp = _root.Q<Button>("artists-up");
+        _artistsValue = _root.Q<Label>("artists-value");
         _drawingTimeDown = _root.Q<Button>("drawing-time-down");
         _drawingTimeUp = _root.Q<Button>("drawing-time-up");
         _drawingTimeValue = _root.Q<Label>("drawing-time-value");
@@ -189,10 +212,13 @@ public class MenuController : MonoBehaviour
         _guessingTimeValue = _root.Q<Label>("guessing-time-value");
 
         _lobbyView = _root.Q<VisualElement>("lobby-view");
-        _roomCodeDisplay = _root.Q<Label>("room-code-display");
-        _lobbyTitle = _root.Q<Label>("lobby-title");
+        _roomCodeDisplay = _root.Q<WaveText>("room-code-display");
+        _lobbyTitle = _root.Q<WaveText>("lobby-title");
         _lobbyDescription = _root.Q<Label>("lobby-description");
         _playerCountLabel = _root.Q<Label>("player-count");
+        _playerCountBadge = _root.Q<VisualElement>("player-count-badge");
+        _startMatchGlint = _root.Q<GlintOverlay>("start-match-glint");
+        _shownPlayerCount = -1;
         _lobbyError = _root.Q<Label>("lobby-error");
         _backButton = _root.Q<Button>("back-button");
         _startMatchButton = _root.Q<Button>("start-match");
@@ -364,7 +390,11 @@ public class MenuController : MonoBehaviour
         if (_createButton != null)
         {
             _createButton.SetEnabled(!creating);
-            _createButton.text = creating ? "CREATING ROOM..." : "CREATE GAME";
+            string label = creating ? "CREATING ROOM..." : "CREATE GAME";
+            if (_createLabel != null)
+                _createLabel.Text = label;
+            else
+                _createButton.text = label;
             _createButton.style.opacity = creating ? 0.6f : 1f;
         }
 
@@ -473,6 +503,8 @@ public class MenuController : MonoBehaviour
         {
             (_maxPlayersDown, DecreaseMaxPlayers),
             (_maxPlayersUp, IncreaseMaxPlayers),
+            (_artistsDown, DecreaseArtists),
+            (_artistsUp, IncreaseArtists),
             (_drawingTimeDown, DecreaseDrawingTime),
             (_drawingTimeUp, IncreaseDrawingTime),
             (_guessingTimeDown, DecreaseGuessingTime),
@@ -482,26 +514,57 @@ public class MenuController : MonoBehaviour
         foreach ((Button button, Action onClick) in steppers)
         {
             if (register)
+            {
+                // Press and hold to keep stepping (a tap still steps once). Swapped in before
+                // the handlers are added, since a new Clickable drops the old one's handlers.
+                if (button != null)
+                    button.clickable = new Clickable((Action)null, StepperRepeatDelayMs, StepperRepeatIntervalMs);
+
                 RegisterButton(button, onClick);
+            }
             else
+            {
                 UnregisterButton(button, onClick);
+            }
         }
     }
 
-    private void DecreaseMaxPlayers() => SetMaxPlayers(GameSessionData.MaxPlayers - 1);
-    private void IncreaseMaxPlayers() => SetMaxPlayers(GameSessionData.MaxPlayers + 1);
+    private void DecreaseMaxPlayers() =>
+        Step(() => GameSessionData.MaxPlayers, SetMaxPlayers, -1, _maxPlayersValue);
+
+    private void IncreaseMaxPlayers() =>
+        Step(() => GameSessionData.MaxPlayers, SetMaxPlayers, +1, _maxPlayersValue);
+
+    // An artist count equal to MAX PLAYERS reads "ALL"; one step down from it is MAX PLAYERS - 1
+    private void DecreaseArtists() =>
+        Step(() => GameSessionData.ArtistCount, SetArtistCount, -1, _artistsValue);
+
+    private void IncreaseArtists() =>
+        Step(() => GameSessionData.ArtistCount, SetArtistCount, +1, _artistsValue);
 
     private void DecreaseDrawingTime() =>
-        SetDrawingSeconds(GameSessionData.DrawingSeconds - PhaseSecondsStep);
+        Step(() => GameSessionData.DrawingSeconds, SetDrawingSeconds, -PhaseSecondsStep, _drawingTimeValue);
 
     private void IncreaseDrawingTime() =>
-        SetDrawingSeconds(GameSessionData.DrawingSeconds + PhaseSecondsStep);
+        Step(() => GameSessionData.DrawingSeconds, SetDrawingSeconds, +PhaseSecondsStep, _drawingTimeValue);
 
     private void DecreaseGuessingTime() =>
-        SetGuessingSeconds(GameSessionData.GuessingSeconds - PhaseSecondsStep);
+        Step(() => GameSessionData.GuessingSeconds, SetGuessingSeconds, -PhaseSecondsStep, _guessingTimeValue);
 
     private void IncreaseGuessingTime() =>
-        SetGuessingSeconds(GameSessionData.GuessingSeconds + PhaseSecondsStep);
+        Step(() => GameSessionData.GuessingSeconds, SetGuessingSeconds, +PhaseSecondsStep, _guessingTimeValue);
+
+    /// <summary>Applies one stepper press: the value pops if it changed, shakes if it's at its limit.</summary>
+    private static void Step(Func<int> get, Action<int> set, int delta, VisualElement valueLabel)
+    {
+        int before = get();
+        set(before + delta);
+
+        if (get() != before)
+            UiFx.Pop(valueLabel, 1.22f, 0.3f);
+        else
+            UiFx.Shake(valueLabel);
+    }
 
     /// <summary>
     /// Sets how many players can join (never below the players already in the relay room,
@@ -513,6 +576,13 @@ public class MenuController : MonoBehaviour
         ApplyMaxPlayersToRelay();
         RefreshSettingsUI();
         RefreshLobbyUI();
+    }
+
+    /// <summary>How many players draw each game (1..MaxPlayers; MaxPlayers shows as "ALL").</summary>
+    public void SetArtistCount(int artists)
+    {
+        GameSessionData.ArtistCount = artists;
+        RefreshSettingsUI();
     }
 
     public void SetDrawingSeconds(int seconds)
@@ -553,28 +623,38 @@ public class MenuController : MonoBehaviour
         int drawing = GameSessionData.DrawingSeconds;
         int guessing = GameSessionData.GuessingSeconds;
 
+        int artists = GameSessionData.ArtistCount;
+
         if (_maxPlayersValue != null)
             _maxPlayersValue.text = maxPlayers.ToString();
+        if (_artistsValue != null)
+            _artistsValue.text = GameSessionData.EveryoneDraws ? "ALL" : artists.ToString();
         if (_drawingTimeValue != null)
             _drawingTimeValue.text = $"{drawing}s";
         if (_guessingTimeValue != null)
             _guessingTimeValue.text = $"{guessing}s";
 
-        SetStepperEnabled(_maxPlayersDown, maxPlayers > MinSelectableMaxPlayers());
-        SetStepperEnabled(_maxPlayersUp, maxPlayers < GameSessionData.MaxPlayersLimit);
-        SetStepperEnabled(_drawingTimeDown, drawing > GameSessionData.MinPhaseSeconds);
-        SetStepperEnabled(_drawingTimeUp, drawing < GameSessionData.MaxPhaseSeconds);
-        SetStepperEnabled(_guessingTimeDown, guessing > GameSessionData.MinPhaseSeconds);
-        SetStepperEnabled(_guessingTimeUp, guessing < GameSessionData.MaxPhaseSeconds);
+        SetStepperAtLimit(_maxPlayersDown, maxPlayers <= MinSelectableMaxPlayers());
+        SetStepperAtLimit(_maxPlayersUp, maxPlayers >= GameSessionData.MaxPlayersLimit);
+        SetStepperAtLimit(_artistsDown, artists <= 1);
+        SetStepperAtLimit(_artistsUp, GameSessionData.EveryoneDraws);
+        SetStepperAtLimit(_drawingTimeDown, drawing <= GameSessionData.MinPhaseSeconds);
+        SetStepperAtLimit(_drawingTimeUp, drawing >= GameSessionData.MaxPhaseSeconds);
+        SetStepperAtLimit(_guessingTimeDown, guessing <= GameSessionData.MinPhaseSeconds);
+        SetStepperAtLimit(_guessingTimeUp, guessing >= GameSessionData.MaxPhaseSeconds);
     }
 
-    private void SetStepperEnabled(Button button, bool enabled)
+    /// <summary>
+    /// A stepper at its limit is dimmed but stays clickable, so pressing it can shake the value
+    /// ("can't go further") instead of silently doing nothing. It doesn't light up on hover.
+    /// </summary>
+    private void SetStepperAtLimit(Button button, bool atLimit)
     {
         if (button == null)
             return;
 
-        button.SetEnabled(enabled);
-        button.style.opacity = enabled ? 1f : 0.35f;
+        button.EnableInClassList(AtLimitClass, atLimit);
+        button.style.opacity = atLimit ? 0.35f : 1f;
         RefreshButton(button);
     }
 
@@ -1040,12 +1120,48 @@ public class MenuController : MonoBehaviour
             label.AddToClassList("character-name-label");
             _characterLabelsLayer.Add(label);
             _playerNameLabels[playerId] = label;
+            FadeInNameLabel(label);
         }
 
         label.text = playerName.ToUpperInvariant();
         label.style.color = playerColor;
         SetBorderColor(label, new Color(playerColor.r, playerColor.g, playerColor.b, 0.7f));
-        label.style.opacity = connected ? 1f : 0.6f;
+
+        // Read by the fade-in while it runs, so a connect/disconnect mid-fade still lands right
+        float opacity = connected ? 1f : 0.6f;
+        label.userData = opacity;
+        if (!_fadingNameLabels.Contains(label))
+            label.style.opacity = opacity;
+    }
+
+    /// <summary>
+    /// The name appears just after the player's cube has formed: a short wait, then it
+    /// fades in while rising a few pixels into place.
+    /// </summary>
+    private void FadeInNameLabel(Label label)
+    {
+        const float delay = 0.35f;
+        const float duration = 0.45f;
+        const float risePixels = 8f;
+
+        _fadingNameLabels.Add(label);
+        label.style.opacity = 0f;
+        label.style.translate = new Translate(0f, risePixels);
+
+        Tween.Custom(
+            target: label,
+            startValue: 0f,
+            endValue: 1f,
+            duration: duration,
+            onValueChange: (el, t) =>
+            {
+                float target = el.userData is float o ? o : 1f;
+                el.style.opacity = t * target;
+                el.style.translate = new Translate(0f, (1f - t) * risePixels);
+            },
+            ease: Ease.OutCubic,
+            startDelay: delay
+        ).OnComplete(() => _fadingNameLabels.Remove(label));
     }
 
     private void RemoveCharacterNameLabel(string playerId)
@@ -1119,6 +1235,9 @@ public class MenuController : MonoBehaviour
         if (cam == null)
             return;
 
+        // Two rings of players: smaller name tags so neighbours don't overlap
+        _characterLabelsLayer.EnableInClassList(CrowdedClass, colorStage.IsOuterRingInUse);
+
         for (int i = 0; i < _players.Count; i++)
         {
             LobbyPlayer player = _players[i];
@@ -1164,40 +1283,55 @@ public class MenuController : MonoBehaviour
     private void RefreshLobbyUI()
     {
         if (_roomCodeDisplay != null)
-            _roomCodeDisplay.text = string.IsNullOrEmpty(_currentRoomCode) ? "----" : _currentRoomCode;
+            _roomCodeDisplay.Text = string.IsNullOrEmpty(_currentRoomCode) ? "----" : _currentRoomCode;
 
         bool hasJoinQr = RefreshJoinQr();
         int totalJoined = _players.Count;
         int connectedCount = GetConnectedPlayerCount();
 
+        bool enoughPlayers = connectedCount >= GameSessionData.MinPlayersToStart;
+        bool canStart = !_startingMatch && enoughPlayers;
+
         if (_playerCountLabel != null)
             _playerCountLabel.text = $"{totalJoined} / {MaxPlayers}";
 
+        // Pop the count badge whenever someone joins or leaves (not on the first fill)
+        if (_shownPlayerCount >= 0 && totalJoined != _shownPlayerCount && _inLobby)
+            UiFx.Pop(_playerCountBadge);
+        _shownPlayerCount = totalJoined;
+
         if (_lobbyTitle != null)
         {
-            _lobbyTitle.text = totalJoined == 0
+            // Keep the bouncing "..." until there are enough players to start
+            _lobbyTitle.Text = !enoughPlayers
                 ? "WAITING FOR PLAYERS..."
                 : totalJoined >= MaxPlayers
                     ? "ROOM FULL — READY"
-                    : "PLAYERS JOINED";
+                    : "READY TO START";
         }
 
         if (_lobbyDescription != null)
         {
-            _lobbyDescription.text = totalJoined > 0
+            int missing = GameSessionData.MinPlayersToStart - connectedCount;
+            _lobbyDescription.text = enoughPlayers
                 ? "Press START MATCH when everyone is ready"
-                : hasJoinQr
-                    ? "Scan the QR code with your phone, or enter this code at the site below"
-                    : "Enter the 4-letter code on your device to join";
+                : totalJoined > 0
+                    ? $"Need {missing} more player{(missing == 1 ? "" : "s")} to start"
+                    : hasJoinQr
+                        ? "Scan the QR code with your phone, or enter this code at the site below"
+                        : "Enter the 4-letter code on your device to join";
         }
 
         if (_startMatchButton != null)
         {
-            bool canStart = !_startingMatch && connectedCount >= GameSessionData.MinPlayersToStart;
             _startMatchButton.SetEnabled(canStart);
             _startMatchButton.style.opacity = canStart ? 1f : 0.5f;
         }
+
+        if (_startMatchGlint != null)
+            _startMatchGlint.Active = canStart && _inLobby;
     }
+
 
     #endregion
 
@@ -1389,6 +1523,8 @@ public class MenuController : MonoBehaviour
         RefreshButton(_startMatchButton);
         RefreshButton(_maxPlayersDown);
         RefreshButton(_maxPlayersUp);
+        RefreshButton(_artistsDown);
+        RefreshButton(_artistsUp);
         RefreshButton(_drawingTimeDown);
         RefreshButton(_drawingTimeUp);
         RefreshButton(_guessingTimeDown);
@@ -1401,7 +1537,7 @@ public class MenuController : MonoBehaviour
             return;
 
         bool active = (_hoveredButtons.Contains(button) || _focusedButtons.Contains(button)) &&
-                      button.enabledSelf;
+                      button.enabledSelf && !button.ClassListContains(AtLimitClass);
 
         SetBorderColor(button, _hue);
         button.style.backgroundColor = active ? _hue : new Color(0f, 0f, 0f, 0.45f);
@@ -1414,32 +1550,6 @@ public class MenuController : MonoBehaviour
         element.style.borderRightColor = color;
         element.style.borderBottomColor = color;
         element.style.borderLeftColor = color;
-    }
-
-    #endregion
-
-    #region Simulation / Testing Actions
-
-    [Title("Debug / Preview (Play Mode)")]
-    [Button]
-    public void SimulateOpenLobby()
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("MenuController preview buttons work in Play Mode.");
-            return;
-        }
-
-        OpenLobby(GenerateRoomCode());
-    }
-
-    [Button]
-    public void SimulateBackToCreate()
-    {
-        if (!Application.isPlaying)
-            return;
-
-        CloseLobby();
     }
 
     #endregion

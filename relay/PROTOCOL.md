@@ -23,9 +23,9 @@ inspects the game payload `d`.
 | Max frame size | 64 KB. Larger frames close the socket with code `1009`. |
 | Ordering | Messages from one sender arrive in the order they were sent. No ordering is guaranteed *between* different senders. |
 | Heartbeat | Relay sends a WebSocket `ping` every 25 s. Browsers and NativeWebSocket answer automatically — clients do nothing. A socket that misses a pong is terminated. |
-| Rate limit | Per socket: bursts of up to 40 messages, refilling at 40/second. Over the limit, messages are dropped. The sender gets **one** `error: rate_limited` when it first goes over, then further drops are silent until it slows down. Every frame counts, including invalid ones. |
+| Rate limit | Per socket: bursts of up to 100 messages, refilling at 40/second. Over the limit, messages are dropped. The sender gets **one** `error: rate_limited` when it first goes over, then further drops are silent until it slows down. Every frame counts, including invalid ones. |
 | Origin | Browser connections must come from an allowed origin (`ALLOWED_ORIGINS`), otherwise the socket is closed with `1008 "origin not allowed"`. Clients that send no `Origin` header (Unity) are always allowed. |
-| Room size | 1 host + max **12 players** (the host can lower this with `set_max_players`). Disconnected players still hold a seat (and count) until their grace period ends. |
+| Room size | 1 host + max **32 players** (the host can lower this with `set_max_players`). Disconnected players still hold a seat (and count) until their grace period ends. |
 | HTTP | `GET /healthz` → `200 {"ok":true,"uptime":<seconds>}`. Everything else is `404`. |
 
 Every message, in both directions, has a string field **`t`** (type). Read `t` first, then the
@@ -59,7 +59,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `grant_broadcast` | Host | `playerId: string \| null` | *(none)* |
 | `kick` | Host | `playerId: string` | *(none — host gets `player_left`)* |
 | `leave` | Player | — | *(none — host gets `player_left {reason:"left"}`)* |
-| `set_max_players` | Host | `maxPlayers: integer 1–12` | *(none)* — later joins over the limit get `room_full`. Nobody already seated is removed. A new room starts at 12. |
+| `set_max_players` | Host | `maxPlayers: integer 1–32` | *(none)* — later joins over the limit get `room_full`. Nobody already seated is removed. A new room starts at 32. |
 
 `Target` is one of:
 
@@ -150,7 +150,7 @@ ignored, so a phone can never impersonate the host or another player.
 | `not_in_room` | `send`/`grant_broadcast`/`kick`/`leave`/`set_max_players` before creating or joining |
 | `already_in_room` | `host_create`/`host_resume`/`join` on a socket that already has an identity |
 | `room_not_found` | No room with that code |
-| `room_full` | Room already has as many players as its limit (12, or what the host set with `set_max_players`) |
+| `room_full` | Room already has as many players as its limit (32, or what the host set with `set_max_players`) |
 | `name_invalid` | Name empty or longer than 16 characters after trimming |
 | `name_taken` | Another player in the room has that name |
 | `bad_host_key` | `host_resume` with the wrong key |
@@ -237,8 +237,8 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 | `d.t` | To | Fields | Notes |
 |---|---|---|---|
 | `state` | players or one player | `phase`, `round`, `remainingMs` | Send `remainingMs`, never timestamps (device clocks differ). **Retain it** when broadcast. In `drawing`, the phone runs its drawing timer from `remainingMs` (the host picks 30–120 s). |
-| `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
-| `round_drawing` | each guesser (not the artist) | `image` (base64), `mime`, `prompt`, `artistName` | The drawing to guess. ★`prompt` is now the artist's **picked category**. |
+| `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`, **only to this game's artists** (the host picks a random set of players, size chosen on the Create Game screen). A phone in `drawing` with no `your_target` is guessing this game and shows a waiting screen. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
+| `round_drawing` | each guesser (not the artist) | `image` (base64, see [Drawing images](#drawing-images)), `mime`, `prompt`, `artistName` | The drawing to guess, forwarded exactly as the artist submitted it. ★`prompt` is now the artist's **picked category**. |
 | `results` | one player | `targetHex`, `roundPoints`, `totalPoints`, `roundRank`, `overallRank`, `totalPlayers` | Sent before the `results` state. |
 | `keepalive` | players | — | Every 30 s so the room isn't closed as idle. Phones ignore it. |
 
@@ -246,11 +246,30 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 
 | `d.t` | Fields | Notes |
 |---|---|---|
-| `pfp_submit` | `image` (base64) | Profile picture, lobby. |
+| `pfp_submit` | `image` (base64), `mime`, `compression`, `w`, `h` | Profile picture, lobby. Same format as `drawing_submit`. |
 | ★`category_pick` | `category: string` | One of the 4 from `your_target.categories`. Send once, before drawing. |
 | `stroke_batch` / `undo` / `clear` | — | Live canvas, to `"host"`. |
 | `drawing_submit` | `prompt`, `image`, `mime`, `compression`, `w`, `h` | ★ `prompt` = the picked category. The host trusts its own record of the pick, not this field. |
 | `guess` | `hex` | During `playing`. |
+
+### Drawing images
+
+Drawings and profile pictures are white ink on black, so `image` is a **1-bit bitmap**, not a PNG
+(`mime: "image/x-truehue-bitmap"`). Before base64 the bytes are gzipped (`compression: "gzip"`;
+`"none"` only if the browser has no `CompressionStream`). Once un-gzipped:
+
+| Bytes | Meaning |
+|---|---|
+| 0–2 | Magic `TH1` |
+| 3–4 | Width, uint16 little-endian (≤ 512) |
+| 5–6 | Height, uint16 little-endian (≤ 512) |
+| 7… | `ceil(w*h/8)` bytes of pixels, row-major from the **top-left**, most significant bit first. `1` = ink (white), `0` = background (black). |
+
+A 512×512 bitmap is 32 KB before gzip, so it fits the frame limit even uncompressed; gzipped it's
+usually a few KB. Decoders sniff the gzip header (`1f 8b`) and the `TH1` magic rather than trusting
+`mime`/`compression`, and still accept the old gzipped PNG/JPEG payloads (e.g. a profile picture
+saved by an older build). Reference code: `frontend/src/lib/drawingCodec.ts` and
+`CodejamBackend/Assets/Scripts/Networking/DrawingImageCodec.cs`.
 
 ### ★ Category pick flow
 
@@ -274,7 +293,7 @@ Unity → guessers {"t":"round_drawing","prompt":"Food","artistName":"Harry", �
 1. **Unity retains every shared `state`**: `send` to `"players"` with `retain: true`. Any phone that
    (re)joins immediately gets the current phase (with `ageMs` to correct `remainingMs`).
 2. **On `player_rejoined`** Unity resends that player's own screen (as today): `drawing` →
-   `your_target` (+ `category`) and `state`; `playing` → `round_drawing` (skip if they're the artist)
+   `your_target` (+ `category`) and `state` for an artist, just `state` for a guesser; `playing` → `round_drawing` (skip if they're the artist)
    and `state`; `results` → their `results`; `finished` → final `results` and `state`.
 3. **On `player_joined` while a game is running** (the new part): add them to the session with
    0 points, then send their screen the same way as a rejoin. They can't draw this game if

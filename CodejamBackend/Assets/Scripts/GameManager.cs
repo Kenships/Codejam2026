@@ -45,6 +45,11 @@ public class GameManager : Singleton<GameManager>
              "setting when the match was started from the menu.")]
     [SerializeField, Min(5f)] private float guessingDurationSeconds = 30f;
 
+    [Tooltip("How many players draw each game, picked at random from the connected players when " +
+             "the drawing phase starts; everyone else only guesses. Replaced by the Create Game " +
+             "screen's setting when the match was started from the menu.")]
+    [SerializeField, Min(1)] private int artistCount = 4;
+
     [Tooltip("Phases stop waiting for a phone this many seconds after it disconnects (it can still " +
              "submit if it comes back in time). Short, so a brief network blip doesn't cost a turn.")]
     [SerializeField, Min(0f)] private float disconnectedWaitSeconds = 3f;
@@ -74,9 +79,17 @@ public class GameManager : Singleton<GameManager>
     // Total circle area shared evenly between all guessed colours in a round
     [SerializeField, Min(0.01f)] private float totalArea = 30f;
 
-    // Bounds on the area of each spawned piece
-    [SerializeField, Min(0.001f)] private float minUnitArea = 0.6f;
-    [SerializeField, Min(0.001f)] private float maxUnitArea = 1.5f;
+    // Piece sizes are derived from these so the screen never gets cluttered: few
+    // guessers -> a few big pieces each, many guessers -> smaller pieces, total capped.
+    [Tooltip("Most cubes spawned for one merge. Only exceeded when needed to give every " +
+             "guessed colour Min Cubes Per Color.")]
+    [SerializeField, Min(1)] private int maxCubesOnScreen = 32;
+
+    [Tooltip("Every guessed colour gets at least this many cubes, however many players there are.")]
+    [SerializeField, Min(1)] private int minCubesPerColor = 2;
+
+    [Tooltip("Most cubes one colour can get (with few players). Lower = bigger cubes.")]
+    [SerializeField, Min(1)] private int maxCubesPerColor = 6;
 
     [Title("Sequence")]
     // Pause after the last body spawns before everything starts merging
@@ -95,11 +108,18 @@ public class GameManager : Singleton<GameManager>
     private Coroutine _phaseRoutine;
     private RevealUI _revealUI;
     private readonly HashSet<string> _submittedDrawingPlayerIds = new();
+    // Players drawing this game (picked in StartDrawingPhase); everyone else only guesses
+    private readonly HashSet<string> _artistIds = new();
     private readonly Dictionary<string, Color> _currentRoundGuesses = new();
     // Points each player earned on the current drawing (guessers, and the artist at reveal)
     private readonly Dictionary<string, int> _currentRoundPoints = new();
     // Everyone's totalPoints before the current drawing was scored (for leaderboard movement)
     private readonly Dictionary<string, int> _totalsBeforeDrawing = new();
+    // Order guesses arrived in for the current drawing (0 = first), for breaking ties
+    private readonly Dictionary<string, int> _guessOrder = new();
+    // Standings (player ids, best first, no shared places) after the last scored drawing, and before it
+    private readonly List<string> _standingsOrder = new();
+    private readonly List<string> _previousStandingsOrder = new();
     // Players whose phone is disconnected, and since when (Time.time). Phases don't wait for them.
     // NegativeInfinity = gone for good (seat released: timed out, kicked or left).
     private readonly Dictionary<string, float> _disconnectedSince = new();
@@ -135,6 +155,7 @@ public class GameManager : Singleton<GameManager>
         {
             drawingDurationSeconds = GameSessionData.DrawingSeconds;
             guessingDurationSeconds = GameSessionData.GuessingSeconds;
+            artistCount = GameSessionData.ArtistCount;
         }
 
         EnsurePhaseUIs();
@@ -187,26 +208,33 @@ public class GameManager : Singleton<GameManager>
             return;
         }
 
-        AssignSecretTargetColorsToPlayers();
-        DealCategoriesToPlayers();
+        PickArtists();
+        List<GameSessionData.SessionPlayer> artists = GetArtists();
+        AssignSecretTargetColors(artists);
+        DealCategories(artists);
 
         GameSessionData.ClearDrawings();
         _submittedDrawingPlayerIds.Clear();
         _currentRoundGuesses.Clear();
+        _guessOrder.Clear();
+        _standingsOrder.Clear();
+        _previousStandingsOrder.Clear();
         _currentDrawingIndex = 0;
 
         SetPhase(GamePhase.Drawing);
         _phaseEndsAt = Time.time + drawingDurationSeconds;
 
         if (drawingPhaseUI != null)
-            drawingPhaseUI.BeginDrawingRound(GameSessionData.Players.Count, drawingDurationSeconds);
+            drawingPhaseUI.BeginDrawingRound(artists.Count, drawingDurationSeconds, GameSessionData.Players.Count);
 
+        // Only artists get a target; the drawing state reaches everyone, and a phone with no
+        // target shows "artists are drawing" until guessing starts
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
         {
             HostRelayClient.Instance.BroadcastDrawingPhase(
                 _currentRound,
                 Mathf.RoundToInt(drawingDurationSeconds * 1000f),
-                GameSessionData.Players
+                artists
             );
         }
 
@@ -228,19 +256,6 @@ public class GameManager : Singleton<GameManager>
 
         _currentDrawingIndex = 0;
         BeginArtistRevealForCurrentDrawing();
-    }
-
-    /// <summary>
-    /// Host pressed CONTINUE on the Drawing UI. Ignored until at least one drawing is in,
-    /// so the round can't be skipped while players are still preparing their drawings.
-    /// (The timer still ends the phase on its own, even with no submissions.)
-    /// </summary>
-    private void HandleDrawingContinueRequested()
-    {
-        if (GameSessionData.Drawings.Count == 0)
-            return;
-
-        CompleteDrawingPhase();
     }
 
     private IEnumerator DrawingTimerRoutine()
@@ -280,15 +295,44 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
-    /// True once every connected player has submitted a drawing. Disconnected players aren't
-    /// waited for; if nobody is connected, the timer runs out instead (they may come back).
+    /// Picks artistCount artists at random from the connected players (all of them when
+    /// artistCount is at least the player count).
+    /// </summary>
+    private void PickArtists()
+    {
+        _artistIds.Clear();
+
+        List<GameSessionData.SessionPlayer> candidates = GameSessionData.Players.FindAll(
+            p => !_disconnectedSince.ContainsKey(p.playerId));
+
+        System.Random random = useSeed ? new System.Random(seed) : new System.Random();
+        for (int i = candidates.Count - 1; i > 0; i--)
+        {
+            int j = random.Next(i + 1);
+            (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
+        }
+
+        int count = Mathf.Min(Mathf.Max(1, artistCount), candidates.Count);
+        for (int i = 0; i < count; i++)
+            _artistIds.Add(candidates[i].playerId);
+    }
+
+    /// <summary>This game's artists, in player order.</summary>
+    private List<GameSessionData.SessionPlayer> GetArtists() =>
+        GameSessionData.Players.FindAll(p => _artistIds.Contains(p.playerId));
+
+    public bool IsArtist(string playerId) => _artistIds.Contains(playerId);
+
+    /// <summary>
+    /// True once every connected artist has submitted a drawing. Disconnected artists aren't
+    /// waited for; if none is connected, the timer runs out instead (they may come back).
     /// </summary>
     private bool HaveAllDrawings()
     {
         bool anyoneToWaitFor = false;
         foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
         {
-            if (!IsWaitingFor(p.playerId))
+            if (!_artistIds.Contains(p.playerId) || !IsWaitingFor(p.playerId))
                 continue;
 
             anyoneToWaitFor = true;
@@ -320,6 +364,10 @@ public class GameManager : Singleton<GameManager>
         string mime)
     {
         if (string.IsNullOrEmpty(playerId) || _submittedDrawingPlayerIds.Contains(playerId))
+            return;
+
+        // Only this game's artists draw (a guesser's phone never gets a target, so this is a stray)
+        if (_artistIds.Count > 0 && !_artistIds.Contains(playerId))
             return;
 
         GameSessionData.SessionPlayer player = GameSessionData.FindPlayer(playerId);
@@ -409,6 +457,7 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
         _currentRoundGuesses.Clear();
+        _guessOrder.Clear();
         _currentRoundPoints.Clear();
         colorPhysics?.ClearAllBodies();
 
@@ -484,37 +533,7 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
-    /// Simulates the next non-artist player submitting a guessed colour near the target hue.
-    /// </summary>
-    [Button]
-    public void SimulateNextPlayerGuess()
-    {
-        if (!Application.isPlaying || _currentPhase != GamePhase.Guessing)
-            return;
-
-        if (_currentDrawingIndex >= GameSessionData.Drawings.Count)
-            return;
-
-        GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
-
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (p.playerId == currentDrawing.playerId || _currentRoundGuesses.ContainsKey(p.playerId))
-                continue;
-
-            // Pick a simulated guessed hue near the artist's target colour with realistic spread
-            Color.RGBToHSV(currentDrawing.targetColor, out float targetH, out float targetS, out float targetV);
-            float guessedH = Mathf.Repeat(targetH + UnityEngine.Random.Range(-0.14f, 0.14f), 1f);
-            Color guessedColor = Color.HSVToRGB(guessedH, Mathf.Clamp01(targetS), Mathf.Clamp01(targetV));
-
-            OnPlayerGuessSubmitted(p.playerId, guessedColor);
-            return;
-        }
-    }
-
-    /// <summary>
-    /// Records a player's colour guess and immediately spawns their guessed colour as cubes in ColorPhysics.
+    /// Records a player's colour guess. Its cubes are spawned with everyone else's when the round ends.
     /// </summary>
     public void OnPlayerGuessSubmitted(string playerId, Color guessedColor)
     {
@@ -534,33 +553,31 @@ public class GameManager : Singleton<GameManager>
             return;
 
         _currentRoundGuesses[playerId] = guessedColor;
+        _guessOrder[playerId] = _guessOrder.Count;
 
         double deltaE = HueScoring.DeltaE2000(guessedColor, currentDrawing.targetColor);
         guesser.streak = HueScoring.UpdateStreak(guesser.streak, deltaE);
         _currentRoundPoints[playerId] = HueScoring.GuessPoints(
             deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
 
+        // Cubes stay hidden until the round ends (see MergeAndRevealRoutine)
         int expectedGuessers = GetExpectedGuesserCount(currentDrawing.playerId);
-        SpawnGuessedColorCubes(guessedColor, expectedGuessers);
-
         guessingPhaseUI?.SetGuessProgress(_currentRoundGuesses.Count, expectedGuessers);
     }
 
-    private void SpawnGuessedColorCubes(Color guessedColor, int expectedGuessers)
+    /// <summary>
+    /// Splits totalArea evenly between the colours, partitions each share into pieces
+    /// sized so the cube count stays bounded, and spawns them all in one shuffled queue.
+    /// </summary>
+    private void SpawnPartitionedCubes(List<Color> colors, ColorPartitionService partitionService)
     {
-        if (colorPhysics == null)
+        if (colorPhysics == null || colors.Count == 0)
             return;
 
-        float shareArea = totalArea / Mathf.Max(1, expectedGuessers);
-        ColorPartitionService partitionService = new();
-        Queue<(Color color, float radius)> pieces = partitionService.CreateSpawnQueue(
-            new List<Color> { guessedColor },
-            shareArea,
-            minUnitArea,
-            maxUnitArea
-        );
+        (float minArea, float maxArea) = ColorPartitionService.GetUnitAreaRange(
+            colors.Count, totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
 
-        colorPhysics.SpawnQueue(pieces);
+        colorPhysics.SpawnQueue(partitionService.CreateSpawnQueue(colors, totalArea, minArea, maxArea));
     }
 
     /// <summary>
@@ -618,13 +635,14 @@ public class GameManager : Singleton<GameManager>
     {
         GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
 
-        // If nobody guessed before time ran out, spawn a neutral fallback cube so merge still resolves
-        if (colorPhysics != null && colorPhysics.Bodies.Count == 0 && !colorPhysics.IsSpawning)
-        {
-            colorPhysics.SpawnBody(new Color(0.5f, 0.5f, 0.5f, 1f), 0.7f);
-        }
+        // Everyone's guesses appear together now, shuffled. If nobody guessed before time ran
+        // out, a neutral grey stands in so the merge still resolves.
+        List<Color> roundColors = new(_currentRoundGuesses.Values);
+        if (roundColors.Count == 0)
+            roundColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
 
-        // Wait for any remaining queued guess cubes to finish spawning
+        SpawnPartitionedCubes(roundColors, new ColorPartitionService());
+
         while (colorPhysics != null && colorPhysics.IsSpawning)
             yield return null;
 
@@ -743,30 +761,26 @@ public class GameManager : Singleton<GameManager>
         leaderboardUI.Hide();
     }
 
-    /// <summary>Everyone's standing by totalPoints (ties share a rank), for LeaderboardUI.</summary>
+    /// <summary>
+    /// Everyone's standing by totalPoints for LeaderboardUI, one place each (ties are split as
+    /// in RankPlayers, fixed when the drawing was scored).
+    /// </summary>
     private List<LeaderboardUI.Entry> BuildStandings(string artistId, bool withHistory)
     {
         List<LeaderboardUI.Entry> entries = new();
 
+        // Matches _standingsOrder; anyone who joined since lands by score
+        List<string> order = Ids(RankPlayers(p => p.totalPoints, null, _standingsOrder));
+        // What the last standings showed
+        List<string> previousOrder = withHistory
+            ? Ids(RankPlayers(PreviousTotalOf, null, _previousStandingsOrder))
+            : null;
+
         for (int i = 0; i < GameSessionData.Players.Count; i++)
         {
             GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            int previousTotal = _totalsBeforeDrawing.TryGetValue(p.playerId, out int before) ? before : p.totalPoints;
-
-            int previousRank = 0;
-            if (withHistory)
-            {
-                previousRank = 1;
-                for (int j = 0; j < GameSessionData.Players.Count; j++)
-                {
-                    string otherId = GameSessionData.Players[j].playerId;
-                    int otherBefore = _totalsBeforeDrawing.TryGetValue(otherId, out int ob)
-                        ? ob
-                        : GameSessionData.Players[j].totalPoints;
-                    if (otherBefore > previousTotal)
-                        previousRank++;
-                }
-            }
+            int previousTotal = PreviousTotalOf(p);
+            int previousRank = previousOrder != null ? previousOrder.IndexOf(p.playerId) + 1 : 0;
 
             entries.Add(new LeaderboardUI.Entry
             {
@@ -777,7 +791,7 @@ public class GameManager : Singleton<GameManager>
                 Total = p.totalPoints,
                 PreviousTotal = previousTotal,
                 RoundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0,
-                Rank = RankBy(p.totalPoints, other => other.totalPoints),
+                Rank = order.IndexOf(p.playerId) + 1,
                 PreviousRank = previousRank,
                 IsArtist = p.playerId == artistId
             });
@@ -785,6 +799,9 @@ public class GameManager : Singleton<GameManager>
 
         return entries;
     }
+
+    private int PreviousTotalOf(GameSessionData.SessionPlayer p) =>
+        _totalsBeforeDrawing.TryGetValue(p.playerId, out int before) ? before : p.totalPoints;
 
     private void RequestNextDrawing()
     {
@@ -894,28 +911,33 @@ public class GameManager : Singleton<GameManager>
         }
     }
 
-    private void AssignSecretTargetColorsToPlayers()
+    /// <summary>Evenly spaced hues across the artists, so no two drawings share a target.</summary>
+    private void AssignSecretTargetColors(List<GameSessionData.SessionPlayer> artists)
     {
         System.Random random = useSeed ? new System.Random(seed) : new System.Random();
-        List<Color> targets = GenerateDistinctColors(Mathf.Max(1, GameSessionData.Players.Count), random);
+        List<Color> targets = GenerateDistinctColors(Mathf.Max(1, artists.Count), random);
 
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.Players[i].secretTargetColor = targets[i];
-        }
+        for (int i = 0; i < artists.Count; i++)
+            artists[i].secretTargetColor = targets[i];
     }
 
-    /// <summary>Gives every player fresh categories to pick from and clears last game's pick.</summary>
-    private void DealCategoriesToPlayers()
+    /// <summary>
+    /// Gives this game's artists fresh categories to pick from. Everyone's options and pick from
+    /// last game are cleared first, so non-artists have none (and their picks are ignored).
+    /// </summary>
+    private void DealCategories(List<GameSessionData.SessionPlayer> artists)
     {
-        System.Random random = useSeed ? new System.Random(seed + 1) : new System.Random();
-        List<string[]> hands = CategoryWordBank.Deal(GameSessionData.Players.Count, random);
-
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
         {
-            GameSessionData.Players[i].categoryOptions = hands[i];
-            GameSessionData.Players[i].category = null;
+            p.categoryOptions = null;
+            p.category = null;
         }
+
+        System.Random random = useSeed ? new System.Random(seed + 1) : new System.Random();
+        List<string[]> hands = CategoryWordBank.Deal(artists.Count, random);
+
+        for (int i = 0; i < artists.Count; i++)
+            artists[i].categoryOptions = hands[i];
     }
 
     /// <summary>
@@ -1001,14 +1023,6 @@ public class GameManager : Singleton<GameManager>
 
     private void BindUIEvents(bool subscribe)
     {
-        if (drawingPhaseUI != null)
-        {
-            drawingPhaseUI.ContinueRequested -= HandleDrawingContinueRequested;
-
-            if (subscribe)
-                drawingPhaseUI.ContinueRequested += HandleDrawingContinueRequested;
-        }
-
         if (_revealUI != null)
         {
             _revealUI.PlayAgainRequested -= RequestNextDrawing;
@@ -1033,16 +1047,12 @@ public class GameManager : Singleton<GameManager>
 
         if (guessingPhaseUI != null)
         {
-            guessingPhaseUI.SimulateGuessRequested -= SimulateNextPlayerGuess;
-            guessingPhaseUI.MergeNowRequested -= BeginMergeAndRevealForCurrentDrawing;
             guessingPhaseUI.NextDrawingRequested -= RequestNextDrawing;
             guessingPhaseUI.PlayAgainRequested -= HandlePlayAgain;
             guessingPhaseUI.BackToMenuRequested -= HandleBackToMenu;
 
             if (subscribe)
             {
-                guessingPhaseUI.SimulateGuessRequested += SimulateNextPlayerGuess;
-                guessingPhaseUI.MergeNowRequested += BeginMergeAndRevealForCurrentDrawing;
                 guessingPhaseUI.NextDrawingRequested += RequestNextDrawing;
                 guessingPhaseUI.PlayAgainRequested += HandlePlayAgain;
                 guessingPhaseUI.BackToMenuRequested += HandleBackToMenu;
@@ -1119,6 +1129,14 @@ public class GameManager : Singleton<GameManager>
                 p.totalPoints += points;
         }
 
+        // Fix the new standings while this drawing's artist and guess order can still break ties
+        _previousStandingsOrder.Clear();
+        _previousStandingsOrder.AddRange(_standingsOrder);
+        _standingsOrder.Clear();
+        foreach (GameSessionData.SessionPlayer p in RankPlayers(
+                     other => other.totalPoints, artistId, _previousStandingsOrder))
+            _standingsOrder.Add(p.playerId);
+
         Debug.Log($"[GameManager] Scores for {drawing.playerName}'s drawing: {DescribeScores()}");
     }
 
@@ -1128,33 +1146,82 @@ public class GameManager : Singleton<GameManager>
         HostRelayClient relay = HostRelayClient.Instance;
         int count = GameSessionData.Players.Count;
 
+        List<string> roundOrder = Ids(RankPlayers(RoundPointsOf, drawing.playerId, null));
+        List<string> overallOrder = Ids(RankPlayers(p => p.totalPoints, null, _standingsOrder));
+
         for (int i = 0; i < count; i++)
         {
             GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            int roundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0;
 
             relay.SendResults(
                 p.playerId,
                 drawing.targetColor,
-                roundPoints,
+                RoundPointsOf(p),
                 p.totalPoints,
-                RankBy(roundPoints, other => _currentRoundPoints.TryGetValue(other.playerId, out int o) ? o : 0),
-                RankBy(p.totalPoints, other => other.totalPoints),
+                roundOrder.IndexOf(p.playerId) + 1,
+                overallOrder.IndexOf(p.playerId) + 1,
                 count);
         }
     }
 
-    /// <summary>1 + how many players scored strictly more (ties share a rank).</summary>
-    private static int RankBy(int score, Func<GameSessionData.SessionPlayer, int> scoreOf)
+    private int RoundPointsOf(GameSessionData.SessionPlayer p) =>
+        _currentRoundPoints.TryGetValue(p.playerId, out int points) ? points : 0;
+
+    /// <summary>
+    /// Every player, best first, with no shared places. Equal scores are split by the current
+    /// drawing when <paramref name="artistId"/> is given: its artist first, then guessers in the
+    /// order they guessed, then whoever didn't guess. Anyone still level keeps their place in
+    /// <paramref name="previousOrder"/> (e.g. the last standings), then player order.
+    /// </summary>
+    private List<GameSessionData.SessionPlayer> RankPlayers(
+        Func<GameSessionData.SessionPlayer, int> scoreOf,
+        string artistId,
+        IReadOnlyList<string> previousOrder)
     {
-        int rank = 1;
+        List<GameSessionData.SessionPlayer> ranked = new(GameSessionData.Players);
+        Dictionary<string, int> joinOrder = new();
         for (int i = 0; i < GameSessionData.Players.Count; i++)
+            joinOrder[GameSessionData.Players[i].playerId] = i;
+
+        int ThisDrawing(GameSessionData.SessionPlayer p)
         {
-            if (scoreOf(GameSessionData.Players[i]) > score)
-                rank++;
+            if (artistId == null)
+                return 0;
+            if (p.playerId == artistId)
+                return -1;
+            return _guessOrder.TryGetValue(p.playerId, out int order) ? order : int.MaxValue;
         }
-        return rank;
+
+        int Previously(GameSessionData.SessionPlayer p)
+        {
+            if (previousOrder == null)
+                return 0;
+            int index = -1;
+            for (int i = 0; i < previousOrder.Count; i++)
+            {
+                if (previousOrder[i] == p.playerId)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            return index >= 0 ? index : int.MaxValue;
+        }
+
+        ranked.Sort((a, b) =>
+        {
+            int c = scoreOf(b).CompareTo(scoreOf(a));
+            if (c == 0) c = ThisDrawing(a).CompareTo(ThisDrawing(b));
+            if (c == 0) c = Previously(a).CompareTo(Previously(b));
+            if (c == 0) c = joinOrder[a.playerId].CompareTo(joinOrder[b.playerId]);
+            return c;
+        });
+
+        return ranked;
     }
+
+    private static List<string> Ids(List<GameSessionData.SessionPlayer> players) =>
+        players.ConvertAll(p => p.playerId);
 
     private string DescribeScores()
     {
@@ -1190,7 +1257,9 @@ public class GameManager : Singleton<GameManager>
         switch (_currentPhase)
         {
             case GamePhase.Drawing:
-                if (!_submittedDrawingPlayerIds.Contains(playerId))
+                if (!_artistIds.Contains(playerId))
+                    relay.SendPhaseStateTo(playerId, "drawing", _currentRound, remainingMs); // guesser: wait
+                else if (!_submittedDrawingPlayerIds.Contains(playerId))
                     relay.SendDrawingPhaseTo(player, _currentRound, remainingMs);
                 break;
 
@@ -1290,7 +1359,14 @@ public class GameManager : Singleton<GameManager>
     /// spawn every partitioned piece, wait mergeDelay, merge them all.
     /// </summary>
     [Button]
-    public void GenerateAndSpawn()
+    public void GenerateAndSpawn() =>
+        GenerateAndSpawn(GameSessionData.Players.Count > 0 ? GameSessionData.Players.Count : colorCount);
+
+    /// <summary>
+    /// Same as the end of a guessing round with <paramref name="count"/> guesses: partitions,
+    /// spawns (within ColorPhysics' spawn window) and merges. Used by the layout test scene.
+    /// </summary>
+    public void GenerateAndSpawn(int count)
     {
         if (!Application.isPlaying)
         {
@@ -1308,29 +1384,23 @@ public class GameManager : Singleton<GameManager>
             ? new System.Random(seed)
             : new System.Random();
 
-        int count = GameSessionData.Players.Count > 0 ? GameSessionData.Players.Count : colorCount;
-        List<Color> colors = GenerateDistinctColors(count, random);
+        StopActiveRoutines();
+        colorPhysics.gameObject.SetActive(true);
+        colorPhysics.ClearAllBodies();
+
+        List<Color> colors = GenerateDistinctColors(Mathf.Max(1, count), random);
 
         ColorPartitionService partitionService = new(random.Next());
-
-        Queue<(Color color, float radius)> spawnQueue =
-            partitionService.CreateSpawnQueue(
-                colors,
-                totalArea,
-                minUnitArea,
-                maxUnitArea
-            );
 
         if (_sequenceRoutine != null)
             StopCoroutine(_sequenceRoutine);
 
-        _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(spawnQueue));
+        _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(colors, partitionService));
     }
 
-    private IEnumerator SpawnThenMergeRoutine(
-        Queue<(Color color, float radius)> spawnQueue)
+    private IEnumerator SpawnThenMergeRoutine(List<Color> colors, ColorPartitionService partitionService)
     {
-        colorPhysics.SpawnQueue(spawnQueue);
+        SpawnPartitionedCubes(colors, partitionService);
 
         while (colorPhysics.IsSpawning)
             yield return null;
