@@ -460,25 +460,4 @@ public class RevealUI : MonoBehaviour
     }
 
     #endregion
-
-    #region Debug
-
-    [Title("Debug (Play Mode)")]
-    [Button]
-    public void PreviewResult()
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("RevealUI preview only works in Play mode.");
-            return;
-        }
-
-        Color mixed = Color.HSVToRGB(0.55f, 0.8f, 0.9f);
-        Color truth = Color.HSVToRGB(0.6f, 1f, 1f);
-
-        Show(_header);
-        OnRevealed(new RevealResult(mixed, truth, new[] { Color.red, Color.green, Color.blue, Color.yellow }));
-    }
-
-    #endregion
 }

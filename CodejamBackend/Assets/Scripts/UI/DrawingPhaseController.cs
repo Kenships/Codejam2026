@@ -32,11 +32,6 @@ public class DrawingPhaseController : MonoBehaviour
     [Tooltip("Matches frontend PlayPage.tsx (24 deg/s -> ~15s per full rainbow cycle).")]
     [SerializeField, Min(1f)] private float rainbowDegreesPerSecond = 24f;
 
-    [Title("Testing")]
-    [SerializeField] private bool showSimulateControls = true;
-
-    public event Action ContinueRequested;
-
     private VisualElement _root;
     private VisualElement _drawingRoot;
     private VisualElement _drawingHeader;
@@ -49,8 +44,6 @@ public class DrawingPhaseController : MonoBehaviour
     private Label _submissionCount;
     private Label _timerValue;
     private Label _description;
-    private VisualElement _testRow;
-    private Button _continueButton;
 
     // Artist spotlight elements (shown after all player icons merge into the artist)
     private VisualElement _artistSpotlight;
@@ -61,8 +54,6 @@ public class DrawingPhaseController : MonoBehaviour
 
     private readonly Dictionary<string, VisualElement> _submittedIcons = new();
     private readonly List<VisualElement> _orderedIcons = new();
-    private readonly HashSet<Button> _hoveredButtons = new();
-    private readonly HashSet<Button> _focusedButtons = new();
 
     private float _rainbowHueDeg;
     private Color _currentRainbowColor = Color.red;
@@ -113,8 +104,6 @@ public class DrawingPhaseController : MonoBehaviour
         _submissionCount = _root.Q<Label>("submission-count");
         _timerValue = _root.Q<Label>("drawing-timer");
         _description = _root.Q<Label>("drawing-description");
-        _testRow = _root.Q<VisualElement>("drawing-test-row");
-        _continueButton = _root.Q<Button>("next-phase");
 
         _artistSpotlight = _root.Q<VisualElement>("artist-spotlight");
         _artistSpotlightKicker = _root.Q<Label>("artist-spotlight-kicker");
@@ -122,23 +111,11 @@ public class DrawingPhaseController : MonoBehaviour
         _artistSpotlightPfp = _root.Q<VisualElement>("artist-spotlight-pfp");
         _artistSpotlightName = _root.Q<Label>("artist-spotlight-name");
 
-        if (_testRow != null)
-            _testRow.style.display = showSimulateControls ? DisplayStyle.Flex : DisplayStyle.None;
-
         if (_title != null)
             _title.OverlapAnimate = true;
 
-        RegisterButton(_continueButton, OnContinueClicked);
-
         ApplyRainbowColor(Color.HSVToRGB(0f, 1f, 1f));
         SetVisible(_isVisible);
-    }
-
-    private void OnDisable()
-    {
-        UnregisterButton(_continueButton, OnContinueClicked);
-        _hoveredButtons.Clear();
-        _focusedButtons.Clear();
     }
 
     private void Update()
@@ -585,16 +562,6 @@ public class DrawingPhaseController : MonoBehaviour
                 ? "Everyone is ready — moving to the next phase!"
                 : "Draw a clue on your phone and submit before time runs out";
         }
-
-        // No skipping ahead while players are still preparing their drawings:
-        // with nothing submitted there would be nothing to guess.
-        if (_continueButton != null)
-        {
-            bool canContinue = submitted > 0;
-            _continueButton.SetEnabled(canContinue);
-            _continueButton.style.opacity = canContinue ? 1f : 0.45f;
-            RefreshButton(_continueButton);
-        }
     }
 
     private void ApplyRainbowColor(Color rainbow)
@@ -613,81 +580,9 @@ public class DrawingPhaseController : MonoBehaviour
 
         if (_title != null)
             _title.BaseColor = rainbow;
-
-        RefreshButton(_continueButton);
     }
 
-    #region Buttons
-
-    private void OnContinueClicked()
-    {
-        if (_submittedIcons.Count == 0)
-            return;
-
-        GameAudioController.EnsureExists().PlayButtonClick();
-        ContinueRequested?.Invoke();
-    }
-
-    private void RegisterButton(Button button, Action onClick)
-    {
-        if (button == null)
-            return;
-
-        button.clicked += onClick;
-        button.RegisterCallback<PointerEnterEvent, Button>(OnButtonEnter, button);
-        button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonLeave, button);
-        button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
-        button.RegisterCallback<FocusOutEvent, Button>(OnButtonFocusOut, button);
-    }
-
-    private void UnregisterButton(Button button, Action onClick)
-    {
-        if (button == null)
-            return;
-
-        button.clicked -= onClick;
-        button.UnregisterCallback<PointerEnterEvent, Button>(OnButtonEnter);
-        button.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonLeave);
-        button.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
-        button.UnregisterCallback<FocusOutEvent, Button>(OnButtonFocusOut);
-    }
-
-    private void OnButtonEnter(PointerEnterEvent evt, Button button)
-    {
-        _hoveredButtons.Add(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonLeave(PointerLeaveEvent evt, Button button)
-    {
-        _hoveredButtons.Remove(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonFocusIn(FocusInEvent evt, Button button)
-    {
-        _focusedButtons.Add(button);
-        RefreshButton(button);
-    }
-
-    private void OnButtonFocusOut(FocusOutEvent evt, Button button)
-    {
-        _focusedButtons.Remove(button);
-        RefreshButton(button);
-    }
-
-    private void RefreshButton(Button button)
-    {
-        if (button == null)
-            return;
-
-        bool active = (_hoveredButtons.Contains(button) || _focusedButtons.Contains(button)) &&
-                      button.enabledSelf;
-
-        SetBorderColor(button, _currentRainbowColor);
-        button.style.backgroundColor = active ? _currentRainbowColor : new Color(0f, 0f, 0f, 0.45f);
-        button.style.color = active ? Color.black : _currentRainbowColor;
-    }
+    #region Helpers
 
     private static void SetBorderColor(VisualElement element, Color color)
     {

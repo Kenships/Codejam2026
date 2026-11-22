@@ -229,19 +229,6 @@ public class GameManager : Singleton<GameManager>
         BeginArtistRevealForCurrentDrawing();
     }
 
-    /// <summary>
-    /// Host pressed CONTINUE on the Drawing UI. Ignored until at least one drawing is in,
-    /// so the round can't be skipped while players are still preparing their drawings.
-    /// (The timer still ends the phase on its own, even with no submissions.)
-    /// </summary>
-    private void HandleDrawingContinueRequested()
-    {
-        if (GameSessionData.Drawings.Count == 0)
-            return;
-
-        CompleteDrawingPhase();
-    }
-
     private IEnumerator DrawingTimerRoutine()
     {
         float remaining = drawingDurationSeconds;
@@ -480,36 +467,6 @@ public class GameManager : Singleton<GameManager>
             return;
 
         OnPlayerGuessSubmitted(playerId, guessedColor);
-    }
-
-    /// <summary>
-    /// Simulates the next non-artist player submitting a guessed colour near the target hue.
-    /// </summary>
-    [Button]
-    public void SimulateNextPlayerGuess()
-    {
-        if (!Application.isPlaying || _currentPhase != GamePhase.Guessing)
-            return;
-
-        if (_currentDrawingIndex >= GameSessionData.Drawings.Count)
-            return;
-
-        GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
-
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (p.playerId == currentDrawing.playerId || _currentRoundGuesses.ContainsKey(p.playerId))
-                continue;
-
-            // Pick a simulated guessed hue near the artist's target colour with realistic spread
-            Color.RGBToHSV(currentDrawing.targetColor, out float targetH, out float targetS, out float targetV);
-            float guessedH = Mathf.Repeat(targetH + UnityEngine.Random.Range(-0.14f, 0.14f), 1f);
-            Color guessedColor = Color.HSVToRGB(guessedH, Mathf.Clamp01(targetS), Mathf.Clamp01(targetV));
-
-            OnPlayerGuessSubmitted(p.playerId, guessedColor);
-            return;
-        }
     }
 
     /// <summary>
@@ -946,14 +903,6 @@ public class GameManager : Singleton<GameManager>
 
     private void BindUIEvents(bool subscribe)
     {
-        if (drawingPhaseUI != null)
-        {
-            drawingPhaseUI.ContinueRequested -= HandleDrawingContinueRequested;
-
-            if (subscribe)
-                drawingPhaseUI.ContinueRequested += HandleDrawingContinueRequested;
-        }
-
         if (_revealUI != null)
         {
             _revealUI.PlayAgainRequested -= RequestNextDrawing;
@@ -978,16 +927,12 @@ public class GameManager : Singleton<GameManager>
 
         if (guessingPhaseUI != null)
         {
-            guessingPhaseUI.SimulateGuessRequested -= SimulateNextPlayerGuess;
-            guessingPhaseUI.MergeNowRequested -= BeginMergeAndRevealForCurrentDrawing;
             guessingPhaseUI.NextDrawingRequested -= RequestNextDrawing;
             guessingPhaseUI.PlayAgainRequested -= HandlePlayAgain;
             guessingPhaseUI.BackToMenuRequested -= HandleBackToMenu;
 
             if (subscribe)
             {
-                guessingPhaseUI.SimulateGuessRequested += SimulateNextPlayerGuess;
-                guessingPhaseUI.MergeNowRequested += BeginMergeAndRevealForCurrentDrawing;
                 guessingPhaseUI.NextDrawingRequested += RequestNextDrawing;
                 guessingPhaseUI.PlayAgainRequested += HandlePlayAgain;
                 guessingPhaseUI.BackToMenuRequested += HandleBackToMenu;

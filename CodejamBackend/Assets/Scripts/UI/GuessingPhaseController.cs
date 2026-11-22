@@ -21,7 +21,6 @@ using UnityEngine.UIElements;
 public class GuessingPhaseController : MonoBehaviour
 {
     [SerializeField, Required] private UIDocument document;
-    [SerializeField] private bool showSimulateControls = true;
     [SerializeField, Min(1f)] private float finishedRainbowDegPerSec = 24f;
 
     [Title("Guess Stage")]
@@ -34,8 +33,6 @@ public class GuessingPhaseController : MonoBehaviour
     // Gap (panel px) kept between the docked sidebar / screen edges and the guessed cubes
     [SerializeField, Min(0f)] private float stagePadding = 40f;
 
-    public event Action SimulateGuessRequested;
-    public event Action MergeNowRequested;
     public event Action NextDrawingRequested;
     public event Action PlayAgainRequested;
     public event Action BackToMenuRequested;
@@ -53,9 +50,6 @@ public class GuessingPhaseController : MonoBehaviour
     private VisualElement _drawingImage;
     private Label _promptLabel;
     private Label _guessCountLabel;
-    private VisualElement _testRow;
-    private Button _simulateGuessButton;
-    private Button _mergeNowButton;
 
     // Reveal banner
     private VisualElement _revealBanner;
@@ -115,9 +109,6 @@ public class GuessingPhaseController : MonoBehaviour
         _drawingImage = _root.Q<VisualElement>("drawing-image");
         _promptLabel = _root.Q<Label>("drawing-prompt");
         _guessCountLabel = _root.Q<Label>("guess-count");
-        _testRow = _root.Q<VisualElement>("guess-test-row");
-        _simulateGuessButton = _root.Q<Button>("simulate-guess");
-        _mergeNowButton = _root.Q<Button>("merge-now");
 
         _revealBanner = _root.Q<VisualElement>("reveal-banner");
         _mergedSwatch = _root.Q<VisualElement>("merged-swatch");
@@ -135,11 +126,6 @@ public class GuessingPhaseController : MonoBehaviour
         _playAgainButton = _root.Q<Button>("play-again");
         _backToMenuButton = _root.Q<Button>("back-to-menu");
 
-        if (_testRow != null)
-            _testRow.style.display = showSimulateControls ? DisplayStyle.Flex : DisplayStyle.None;
-
-        RegisterButton(_simulateGuessButton, () => SimulateGuessRequested?.Invoke());
-        RegisterButton(_mergeNowButton, () => MergeNowRequested?.Invoke());
         RegisterButton(_nextDrawingButton, () => NextDrawingRequested?.Invoke());
         RegisterButton(_playAgainButton, () => PlayAgainRequested?.Invoke());
         RegisterButton(_backToMenuButton, () => BackToMenuRequested?.Invoke());
@@ -235,9 +221,6 @@ public class GuessingPhaseController : MonoBehaviour
             _finishedOverlay.style.display = DisplayStyle.None;
         }
 
-        if (_testRow != null)
-            _testRow.style.display = showSimulateControls ? DisplayStyle.Flex : DisplayStyle.None;
-
         if (_roundLabel != null)
             _roundLabel.text = $"DRAWING {drawingIndex + 1} / {totalDrawings}";
 
@@ -310,13 +293,6 @@ public class GuessingPhaseController : MonoBehaviour
 
         if (_guessCountLabel != null)
             _guessCountLabel.text = $"{guessedCount} / {Mathf.Max(1, totalGuessers)} GUESSED";
-
-        if (_simulateGuessButton != null)
-        {
-            bool canGuess = guessedCount < totalGuessers;
-            _simulateGuessButton.SetEnabled(canGuess);
-            _simulateGuessButton.style.opacity = canGuess ? 1f : 0.45f;
-        }
     }
 
     /// <summary>Updates the sidebar while ColorPhysics is actively merging all guessed cubes.</summary>
@@ -324,9 +300,6 @@ public class GuessingPhaseController : MonoBehaviour
     {
         // Even with no guesses a fallback cube is spawned, so make room for it
         SetSidebarDocked(true);
-
-        if (_testRow != null)
-            _testRow.style.display = DisplayStyle.None;
 
         if (_guessCountLabel != null)
             _guessCountLabel.text = "MERGING GUESSES...";
@@ -339,9 +312,6 @@ public class GuessingPhaseController : MonoBehaviour
     public void ShowReveal(Color mergedColor, Color targetColor, bool hasMoreDrawings)
     {
         _accentColor = targetColor;
-
-        if (_testRow != null)
-            _testRow.style.display = DisplayStyle.None;
 
         // Tint the black-and-white drawing with the True Hue on reveal!
         if (_drawingImage != null)
@@ -776,8 +746,6 @@ public class GuessingPhaseController : MonoBehaviour
 
     private void RefreshAllButtons()
     {
-        RefreshButton(_simulateGuessButton);
-        RefreshButton(_mergeNowButton);
         RefreshButton(_nextDrawingButton);
         RefreshButton(_playAgainButton);
         RefreshButton(_backToMenuButton);

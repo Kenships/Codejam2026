@@ -688,7 +688,6 @@ MonoBehaviour:
   document: {fileID: 1700000002}
   submitSound: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
   rainbowDegreesPerSecond: 24
-  showSimulateControls: 1
 --- !u!4 &1700000004
 Transform:
   m_ObjectHideFlags: 0

@@ -1423,30 +1423,4 @@ public class MenuController : MonoBehaviour
     }
 
     #endregion
-
-    #region Simulation / Testing Actions
-
-    [Title("Debug / Preview (Play Mode)")]
-    [Button]
-    public void SimulateOpenLobby()
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("MenuController preview buttons work in Play Mode.");
-            return;
-        }
-
-        OpenLobby(GenerateRoomCode());
-    }
-
-    [Button]
-    public void SimulateBackToCreate()
-    {
-        if (!Application.isPlaying)
-            return;
-
-        CloseLobby();
-    }
-
-    #endregion
 }

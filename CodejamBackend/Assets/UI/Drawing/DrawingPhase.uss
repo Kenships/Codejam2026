@@ -175,33 +175,6 @@
     text-shadow: 0 0 8px rgb(0, 0, 0);
 }
 
-/* ---- Buttons ---- */
-
-.drawing-root .drawing-test-row {
-    width: 100%;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    margin-top: 4px;
-}
-
-.drawing-root .drawing-button.unity-button {
-    min-width: 165px;
-    height: 44px;
-    margin: 0 6px;
-    padding: 6px 18px;
-    border-width: 2px;
-    border-radius: 0;
-    border-color: rgb(255, 255, 255);
-    background-color: rgba(0, 0, 0, 0.45);
-    color: rgb(255, 255, 255);
-    font-size: 18px;
-    -unity-font-style: bold;
-    letter-spacing: 1.8px;
-    -unity-text-align: middle-center;
-    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
-}
-
 /* ---- Submitted Player Icons (Clockwise Around Center Card, Like Join Screen) ---- */
 
 .drawing-root .submitted-player-icon {
