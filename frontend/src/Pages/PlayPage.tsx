@@ -14,6 +14,7 @@ import {
 import { RoundResultsCard } from '@/components/RoundResultsCard'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
 import { TrueHueTitle } from '@/components/TrueHueTitle'
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createMockCompressedDrawing, toDrawingMime } from '@/lib/drawingCodec'
@@ -379,15 +380,15 @@ export function PlayPage() {
   const renderWaitingTitle = () => {
     switch (status) {
       case 'connecting':
-        return 'Joining room...'
+        return <>Joining room<BouncingDots /></>
       case 'reconnecting':
-        return 'Reconnecting...'
+        return <>Reconnecting<BouncingDots /></>
       case 'host_lost':
-        return 'Host disconnected...'
+        return <>Host disconnected<BouncingDots /></>
       case 'disconnected':
         return 'Disconnected'
       default:
-        return 'Waiting for players...'
+        return <>Waiting for players<BouncingDots /></>
     }
   }
 
@@ -544,7 +545,7 @@ export function PlayPage() {
                     Drawing Submitted!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    Waiting for other players to finish drawing...
+                    Waiting for other players to finish drawing<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
@@ -601,7 +602,7 @@ export function PlayPage() {
                     Thanks for Playing!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    Waiting for host to start another round...
+                    Waiting for host to start another round<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-3 pb-4 text-center text-(--hue)">

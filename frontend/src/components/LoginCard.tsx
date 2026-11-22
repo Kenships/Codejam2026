@@ -9,6 +9,7 @@ import {
   CardDescription,
   CardFooter,
 } from '@/components/ui/card'
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import {
   NAME_MAX_LENGTH,
@@ -160,7 +161,14 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
               disabled={isJoining}
               className="transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-2 hover:bg-(--hue) hover:text-black disabled:opacity-60"
             >
-              {isJoining ? 'Joining...' : 'Join Game'}
+              {isJoining ? (
+                <>
+                  Joining
+                  <BouncingDots />
+                </>
+              ) : (
+                'Join Game'
+              )}
             </Button>
           </CardFooter>
         </CardHeader>

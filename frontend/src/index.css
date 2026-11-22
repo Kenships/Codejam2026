@@ -134,3 +134,24 @@
     @apply font-sans;
     }
 }
+/* Typing-indicator dots (components/ui/bouncing-dots.tsx). Same rhythm as the Unity host's
+   WaveText: each dot hops for 0.45 s of a 1.2 s cycle (37.5%), 0.28em high. */
+@keyframes dot-hop {
+    0%, 37.5%, 100% {
+        transform: translateY(0);
+    }
+    18.75% {
+        transform: translateY(-0.28em);
+    }
+}
+
+.bouncing-dot {
+    display: inline-block;
+    animation: dot-hop 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bouncing-dot {
+        animation: none;
+    }
+}

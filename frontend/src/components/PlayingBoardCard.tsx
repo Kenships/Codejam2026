@@ -3,6 +3,7 @@ import { Check, RotateCcw } from 'lucide-react'
 
 import { TutorialTabs } from '@/components/HowToPlay'
 import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -72,7 +73,7 @@ export function DrawingViewport({
     <div className="relative mx-auto aspect-square w-full max-w-[min(512px,40dvh)] overflow-hidden border-2 border-(--hue) bg-black flex items-center justify-center">
       {isDecompressing ? (
         <span className="text-base text-(--hue)/70">
-          Decompressing drawing...
+          Decompressing drawing<BouncingDots />
         </span>
       ) : decompressedUrl ? (
         <>
@@ -91,7 +92,7 @@ export function DrawingViewport({
         </>
       ) : (
         <span className="px-4 text-center text-base text-(--hue)/70">
-          Waiting for artist drawing...
+          Waiting for artist drawing<BouncingDots />
         </span>
       )}
     </div>
@@ -176,7 +177,7 @@ export function PlayingBoardCard({
                 <div className="flex items-center gap-1.5">
                   <Check className="h-4 w-4 text-(--hue)" />
                   <span className="text-base sm:text-lg text-(--hue)">
-                    Wait for other players to submit...
+                    Wait for other players to submit<BouncingDots />
                   </span>
                 </div>
               </div>

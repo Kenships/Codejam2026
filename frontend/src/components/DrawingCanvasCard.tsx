@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { Check, Eraser, Maximize2, Minimize2, Trash2, Undo2 } from 'lucide-react'
 
+import { BouncingDots } from '@/components/ui/bouncing-dots'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -498,7 +499,7 @@ export function DrawingCanvasCard({
             <div className="flex items-center gap-1.5">
               <Check className="h-4 w-4 text-(--hue)" />
               <span className="text-base sm:text-lg text-(--hue)">
-                Waiting for other players to finish...
+                Waiting for other players to finish<BouncingDots />
               </span>
             </div>
           </div>
