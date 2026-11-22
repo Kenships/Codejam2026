@@ -954,6 +954,9 @@ MonoBehaviour:
   clickButton: {fileID: 8300000, guid: cc5170f3d7b69444ea427067dde2c8fb, type: 3}
   joinSound: {fileID: 8300000, guid: e3ef3da170d931c43a8b329375fc9577, type: 3}
   bubbleMerge: {fileID: 8300000, guid: 5cfe0b4c63384c14a83479d967065677, type: 3}
+  countdownTick: {fileID: 8300000, guid: cc5170f3d7b69444ea427067dde2c8fb, type: 3}
+  countdownTickVolume: 0.35
+  countdownTickFadeSeconds: 0.18
   goodGuess: {fileID: 8300000, guid: 9684d6791268d89418f03b80190dfb46, type: 3}
   mediocreGuess: {fileID: 8300000, guid: 4dc1ee6eb8a0562408344f0c6aeb0103, type: 3}
   loseSound: {fileID: 8300000, guid: d7ed7340bf6d6ef43a5b5db18e5633f4, type: 3}

@@ -17,7 +17,8 @@
 
             <ui:VisualElement name="drawing-card" class="drawing-card rainbow-border">
                 <ui:VisualElement name="drawing-top-row" class="drawing-top-row">
-                    <ui:Label name="drawing-title" text="DRAWING IN PROGRESS..." class="drawing-card-title rainbow-text"/>
+                    <!-- Trailing "..." hops like a typing indicator (same rhythm as the menu lobby and the phones) -->
+                    <WaveText name="drawing-title" text="DRAWING IN PROGRESS..." animated-characters="." period="1.2" stagger="0.15" hop-duration="0.45" amplitude="0.28" class="drawing-card-title rainbow-text"/>
                     <ui:VisualElement name="submission-badge" class="drawing-badge rainbow-border">
                         <ui:Label name="submission-count" text="0 / 4 SUBMITTED" class="drawing-badge-text rainbow-text"/>
                     </ui:VisualElement>

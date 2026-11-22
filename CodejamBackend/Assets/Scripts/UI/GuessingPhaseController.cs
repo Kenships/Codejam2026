@@ -42,6 +42,8 @@ public class GuessingPhaseController : MonoBehaviour
     private VisualElement _sidebar;
     private Label _roundLabel;
     private Label _timerLabel;
+    private UiFx.TimerWarning _timerWarning; // red + pop + tick in the last seconds
+    private int _shownGuessCount = -1;
     private VisualElement _artistCube;
     private VisualElement _artistPfp;
     private Label _artistName;
@@ -49,7 +51,7 @@ public class GuessingPhaseController : MonoBehaviour
     private VisualElement _drawingViewport;
     private VisualElement _drawingImage;
     private Label _promptLabel;
-    private Label _guessCountLabel;
+    private WaveText _guessCountLabel; // "MERGING GUESSES..." dots hop
 
     // Reveal banner
     private VisualElement _revealBanner;
@@ -101,6 +103,7 @@ public class GuessingPhaseController : MonoBehaviour
         _sidebar = _root.Q<VisualElement>("guessing-sidebar");
         _roundLabel = _root.Q<Label>("round-label");
         _timerLabel = _root.Q<Label>("guess-timer");
+        _timerWarning = new UiFx.TimerWarning(_timerLabel);
         _artistCube = _root.Q<VisualElement>("artist-cube");
         _artistPfp = _root.Q<VisualElement>("artist-pfp");
         _artistName = _root.Q<Label>("artist-name");
@@ -108,7 +111,7 @@ public class GuessingPhaseController : MonoBehaviour
         _drawingViewport = _root.Q<VisualElement>("drawing-viewport");
         _drawingImage = _root.Q<VisualElement>("drawing-image");
         _promptLabel = _root.Q<Label>("drawing-prompt");
-        _guessCountLabel = _root.Q<Label>("guess-count");
+        _guessCountLabel = _root.Q<WaveText>("guess-count");
 
         _revealBanner = _root.Q<VisualElement>("reveal-banner");
         _mergedSwatch = _root.Q<VisualElement>("merged-swatch");
@@ -224,6 +227,8 @@ public class GuessingPhaseController : MonoBehaviour
         if (_roundLabel != null)
             _roundLabel.text = $"DRAWING {drawingIndex + 1} / {totalDrawings}";
 
+        _timerWarning?.Reset();
+        _shownGuessCount = -1;
         SetRemainingSeconds(durationSeconds);
         SetGuessProgress(0, totalGuessers);
 
@@ -284,6 +289,8 @@ public class GuessingPhaseController : MonoBehaviour
     {
         if (_timerLabel != null)
             _timerLabel.text = $"{Mathf.Max(0, Mathf.CeilToInt(remainingSeconds))}s";
+
+        _timerWarning?.Update(remainingSeconds);
     }
 
     public void SetGuessProgress(int guessedCount, int totalGuessers)
@@ -292,7 +299,12 @@ public class GuessingPhaseController : MonoBehaviour
         SetSidebarDocked(guessedCount > 0);
 
         if (_guessCountLabel != null)
-            _guessCountLabel.text = $"{guessedCount} / {Mathf.Max(1, totalGuessers)} GUESSED";
+            _guessCountLabel.Text = $"{guessedCount} / {Mathf.Max(1, totalGuessers)} GUESSED";
+
+        // Pop when a new guess lands (not when the round resets to 0)
+        if (_shownGuessCount >= 0 && guessedCount > _shownGuessCount)
+            UiFx.Pop(_guessCountLabel);
+        _shownGuessCount = guessedCount;
     }
 
     /// <summary>Updates the sidebar while ColorPhysics is actively merging all guessed cubes.</summary>
@@ -302,7 +314,7 @@ public class GuessingPhaseController : MonoBehaviour
         SetSidebarDocked(true);
 
         if (_guessCountLabel != null)
-            _guessCountLabel.text = "MERGING GUESSES...";
+            _guessCountLabel.Text = "MERGING GUESSES...";
     }
 
     /// <summary>
@@ -321,7 +333,7 @@ public class GuessingPhaseController : MonoBehaviour
             SetBorderColor(_drawingViewport, targetColor);
 
         if (_guessCountLabel != null)
-            _guessCountLabel.text = "TRUE HUE REVEALED!";
+            _guessCountLabel.Text = "TRUE HUE REVEALED!";
 
         _revealBanner?.RemoveFromClassList("is-hidden");
 

@@ -185,6 +185,19 @@
     color: rgba(255, 255, 255, 0.8);
 }
 
+.guessing-root .wave-text {
+    flex-direction: row;
+    align-items: flex-end;
+    flex-shrink: 0;
+}
+
+/* letter-spacing doesn't apply between WaveText's per-character Labels: redone as a margin */
+.guessing-root .wave-text__char {
+    margin: 0 1.6px 0 0;
+    padding: 0;
+    letter-spacing: 0;
+}
+
 /* ---- Buttons ---- */
 
 .guessing-root .guessing-button.unity-button {

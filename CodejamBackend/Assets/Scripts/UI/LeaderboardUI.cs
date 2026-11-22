@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using PrimeTween;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -95,6 +96,8 @@ public class LeaderboardUI : MonoBehaviour
     private Label _roundKicker;
     private Label _roundTitle;
     private Label _roundCountdown;
+    private Label _roundCountdownNumber; // drops in each time it changes
+    private int _shownCountdown = -1;
     private Label _winnersKicker;
     private Label _winnersTitle;
     private Button _continue;
@@ -112,6 +115,12 @@ public class LeaderboardUI : MonoBehaviour
     private float _countUpStartsAt = float.MaxValue;
 
     private readonly List<VisualElement> _bobbingCrowns = new();
+
+    // Winner crowns and their own colour, for the periodic shine once they've landed
+    private readonly List<(LeaderboardGlyph glyph, Color tint)> _shiningCrowns = new();
+    private float _crownShineFrom = float.MaxValue;
+    private const float CrownShineInterval = 3.2f;
+    private const float CrownShineDuration = 0.6f;
 
     public bool IsShowing => _mode != Mode.Hidden;
 
@@ -160,6 +169,7 @@ public class LeaderboardUI : MonoBehaviour
         _roundKicker = _root.Q<Label>("round-kicker");
         _roundTitle = _root.Q<Label>("round-title");
         _roundCountdown = _root.Q<Label>("round-countdown");
+        _roundCountdownNumber = _root.Q<Label>("round-countdown-number");
         _winnersKicker = _root.Q<Label>("winners-kicker");
         _winnersTitle = _root.Q<Label>("winners-title");
         _continue = _root.Q<Button>("continue");
@@ -194,7 +204,7 @@ public class LeaderboardUI : MonoBehaviour
         if (_mode == Mode.Round && _roundCountdown != null)
         {
             int remaining = Mathf.CeilToInt(_countdownEndsAt - Time.time);
-            _roundCountdown.text = remaining > 0 ? $"{_countdownPrefix} IN {remaining}" : "";
+            UpdateCountdown(remaining);
         }
 
         if (_mode == Mode.Winners)
@@ -205,7 +215,70 @@ public class LeaderboardUI : MonoBehaviour
             float bob = Mathf.Sin(Time.time * 2.4f) * crownBobPixels;
             foreach (VisualElement crown in _bobbingCrowns)
                 crown.style.translate = new Translate(0f, bob);
+
+            UpdateCrownShine();
         }
+    }
+
+    /// <summary>
+    /// Every few seconds each winner's crown briefly brightens toward white and swells a touch,
+    /// like light catching it. Starts a moment after the crowns have dropped in.
+    /// </summary>
+    private void UpdateCrownShine()
+    {
+        if (_shiningCrowns.Count == 0 || Time.time < _crownShineFrom)
+            return;
+
+        float p = Mathf.Repeat(Time.time - _crownShineFrom, CrownShineInterval) / CrownShineDuration;
+        float shine = p < 1f ? Mathf.Sin(p * Mathf.PI) : 0f;
+
+        foreach ((LeaderboardGlyph glyph, Color tint) in _shiningCrowns)
+        {
+            glyph.Tint = Color.Lerp(tint, Color.white, shine * 0.65f);
+            float scale = 1f + shine * 0.06f;
+            glyph.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        }
+    }
+
+    /// <summary>"NEXT DRAWING IN 5": the number drops in from above each time it changes.</summary>
+    private void UpdateCountdown(int remaining)
+    {
+        bool show = remaining > 0;
+
+        // Without the separate number label (older UXML), keep it all in one label
+        if (_roundCountdownNumber == null)
+        {
+            _roundCountdown.text = show ? $"{_countdownPrefix} IN {remaining}" : "";
+            return;
+        }
+
+        _roundCountdown.text = show ? $"{_countdownPrefix} IN" : "";
+        _roundCountdownNumber.text = show ? remaining.ToString() : "";
+
+        if (remaining == _shownCountdown)
+            return;
+
+        _shownCountdown = remaining;
+        if (show)
+            DropIn(_roundCountdownNumber);
+    }
+
+    private static void DropIn(VisualElement element)
+    {
+        const float dropPixels = 10f;
+
+        Tween.Custom(
+            target: element,
+            startValue: 0f,
+            endValue: 1f,
+            duration: 0.28f,
+            onValueChange: (el, t) =>
+            {
+                el.style.translate = new Translate(0f, (t - 1f) * dropPixels);
+                el.style.opacity = t;
+            },
+            ease: Ease.OutBack
+        );
     }
 
     #endregion
@@ -242,6 +315,7 @@ public class LeaderboardUI : MonoBehaviour
 
         _countdownPrefix = continueText;
         _countdownEndsAt = Time.time + secondsUntilNext;
+        _shownCountdown = -1;
 
         List<Entry> now = SortedBy(entries, previous: false);
 
@@ -345,6 +419,7 @@ public class LeaderboardUI : MonoBehaviour
         After(crownAt, id, () =>
         {
             _podium.Query(className: "lb-podium-crown-wrap").ForEach(c => c.AddToClassList(ShownClass));
+            _crownShineFrom = Time.time + 0.8f; // let the drop finish first
         });
 
         // Everyone else, down to rank maxShownPlayers
@@ -373,6 +448,8 @@ public class LeaderboardUI : MonoBehaviour
         _countUps.Clear();
         _countUpStartsAt = float.MaxValue;
         _bobbingCrowns.Clear();
+        _shiningCrowns.Clear();
+        _crownShineFrom = float.MaxValue;
 
         _root?.AddToClassList(HiddenClass);
     }
@@ -388,6 +465,8 @@ public class LeaderboardUI : MonoBehaviour
         _countUps.Clear();
         _countUpStartsAt = float.MaxValue;
         _bobbingCrowns.Clear();
+        _shiningCrowns.Clear();
+        _crownShineFrom = float.MaxValue;
 
         _root.RemoveFromClassList(HiddenClass);
         _roundView?.EnableInClassList(HiddenClass, mode != Mode.Round);
@@ -487,6 +566,7 @@ public class LeaderboardUI : MonoBehaviour
             crownWrap.Add(crown);
             slot.Add(crownWrap);
             _bobbingCrowns.Add(crown);
+            _shiningCrowns.Add((crown, rankColor));
         }
 
         VisualElement person = new();

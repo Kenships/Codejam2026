@@ -40,9 +40,11 @@ public class DrawingPhaseController : MonoBehaviour
     private Label _subtitle;
     private VisualElement _iconsLayer;
     private VisualElement _drawingCard;
-    private Label _drawingTitle;
+    private WaveText _drawingTitle;
     private Label _submissionCount;
     private Label _timerValue;
+    private VisualElement _submissionBadge;
+    private UiFx.TimerWarning _timerWarning; // red + pop + tick in the last seconds
     private Label _description;
 
     // Artist spotlight elements (shown after all player icons merge into the artist)
@@ -100,9 +102,11 @@ public class DrawingPhaseController : MonoBehaviour
         _subtitle = _root.Q<Label>("subtitle");
         _iconsLayer = _root.Q<VisualElement>("submitted-icons-layer");
         _drawingCard = _root.Q<VisualElement>("drawing-card");
-        _drawingTitle = _root.Q<Label>("drawing-title");
+        _drawingTitle = _root.Q<WaveText>("drawing-title");
         _submissionCount = _root.Q<Label>("submission-count");
         _timerValue = _root.Q<Label>("drawing-timer");
+        _submissionBadge = _root.Q<VisualElement>("submission-badge");
+        _timerWarning = new UiFx.TimerWarning(_timerValue);
         _description = _root.Q<Label>("drawing-description");
 
         _artistSpotlight = _root.Q<VisualElement>("artist-spotlight");
@@ -192,6 +196,7 @@ public class DrawingPhaseController : MonoBehaviour
         _artistSpotlight?.AddToClassList("is-hidden");
 
         ClearSubmittedIcons();
+        _timerWarning?.Reset();
         SetRemainingSeconds(durationSeconds);
         RefreshProgressLabels();
         SetVisible(true);
@@ -369,6 +374,8 @@ public class DrawingPhaseController : MonoBehaviour
     {
         if (_timerValue != null)
             _timerValue.text = $"{Mathf.Max(0, Mathf.CeilToInt(remainingSeconds))}";
+
+        _timerWarning?.Update(remainingSeconds);
     }
 
     /// <summary>
@@ -392,6 +399,7 @@ public class DrawingPhaseController : MonoBehaviour
 
             LayoutSubmittedIcons();
             AnimateIconPopIn(iconRoot);
+            UiFx.Pop(_submissionBadge);
 
             Vector2 pos = ComputeClockwisePanelPosition(_orderedIcons.Count - 1);
             if (_background != null)
@@ -554,7 +562,7 @@ public class DrawingPhaseController : MonoBehaviour
             _submissionCount.text = $"{submitted} / {_expectedPlayerCount} SUBMITTED";
 
         if (_drawingTitle != null)
-            _drawingTitle.text = allDone ? "ALL DRAWINGS SUBMITTED!" : "DRAWING IN PROGRESS...";
+            _drawingTitle.Text = allDone ? "ALL DRAWINGS SUBMITTED!" : "DRAWING IN PROGRESS...";
 
         if (_description != null)
         {
@@ -572,6 +580,7 @@ public class DrawingPhaseController : MonoBehaviour
         _root.Query(className: "rainbow-text").ForEach(e => e.style.color = rainbow);
         _root.Query(className: "rainbow-dim-text").ForEach(e => e.style.color = dim);
         _root.Query(className: "rainbow-border").ForEach(e => SetBorderColor(e, rainbow));
+        _timerWarning?.ReapplyColor(); // keep the low-time red over the rainbow
 
         if (_background != null)
             _background.accentColor = rainbow;

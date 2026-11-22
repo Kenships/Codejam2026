@@ -35,7 +35,7 @@
                 <ui:Label name="drawing-prompt" text="&quot;Golden hour sunset&quot;" class="drawing-prompt"/>
 
                 <ui:VisualElement name="guess-footer" class="guess-footer">
-                    <ui:Label name="guess-count" text="0 / 3 GUESSED" class="guess-count"/>
+                    <WaveText name="guess-count" text="0 / 3 GUESSED" animated-characters="." period="1.2" stagger="0.15" hop-duration="0.45" amplitude="0.28" class="guess-count"/>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

@@ -217,3 +217,26 @@
 .reveal-root .is-hidden {
     display: none;
 }
+
+/* Button with a GlintOverlay (GlintOverlay.cs): clip the light streak to the button */
+.reveal-root .glint-host {
+    overflow: hidden;
+}
+
+.reveal-root .glint-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.reveal-root .glint-overlay__streak {
+    position: absolute;
+    left: 0;
+    top: -60%;
+    width: 26px;
+    height: 220%;
+    rotate: 22deg;
+    background-color: rgba(255, 255, 255, 0.55);
+}

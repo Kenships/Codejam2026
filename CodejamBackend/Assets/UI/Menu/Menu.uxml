@@ -44,7 +44,10 @@
                     <ui:Label name="error" class="card-error"/>
                 </ui:VisualElement>
                 <ui:VisualElement name="card-footer" class="card-footer">
-                    <ui:Button name="join" text="CREATE GAME" class="menu-button menu-button--primary"/>
+                    <!-- Label is a WaveText so "CREATING ROOM..." can bounce its dots; the button's own text stays empty -->
+                    <ui:Button name="join" text="" class="menu-button menu-button--primary menu-button--wave">
+                        <WaveText name="create-label" text="CREATE GAME" animated-characters="." period="1.2" stagger="0.15" hop-duration="0.45" amplitude="0.28"/>
+                    </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
 
@@ -53,7 +56,8 @@
                 <ui:VisualElement name="lobby-panels" class="lobby-panels">
                     <ui:VisualElement name="lobby-card" class="card card--lobby hue-border">
                         <ui:VisualElement name="lobby-header-row" class="lobby-header-row">
-                            <ui:Label name="lobby-title" text="WAITING FOR PLAYERS..." class="lobby-title hue-text"/>
+                            <!-- Only the dots hop, like a typing indicator -->
+                            <WaveText name="lobby-title" text="WAITING FOR PLAYERS..." animated-characters="." period="1.2" stagger="0.15" hop-duration="0.45" amplitude="0.28" class="lobby-title hue-text"/>
                             <ui:VisualElement name="player-count-badge" class="lobby-count-badge hue-border">
                                 <ui:Label name="player-count" text="0 / 12" class="lobby-count-text hue-text"/>
                             </ui:VisualElement>
@@ -62,7 +66,7 @@
                         <ui:VisualElement name="room-code-box" class="lobby-code-box hue-border">
                             <ui:VisualElement name="room-code-text" class="lobby-code-text">
                                 <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
-                                <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
+                                <WaveText name="room-code-display" text="KXQM" period="5" stagger="0.09" hop-duration="0.4" amplitude="0.12" start-delay="2.5" class="lobby-code-value hue-text"/>
                             </ui:VisualElement>
                         </ui:VisualElement>
 
@@ -71,13 +75,17 @@
 
                         <ui:VisualElement name="lobby-footer" class="card-footer card-footer--lobby">
                             <ui:Button name="back-button" text="BACK" class="menu-button menu-button--secondary"/>
-                            <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary"/>
+                            <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary start-match-button">
+                                <!-- Sweeps across once enough players are in (MenuController sets Active) -->
+                                <GlintOverlay name="start-match-glint"/>
+                            </ui:Button>
                         </ui:VisualElement>
                     </ui:VisualElement>
 
                     <!-- QR panel: filled from RelayClient.JoinUrl; hidden until there's a real room -->
                     <ui:VisualElement name="room-qr-box" class="card card--qr hue-border is-hidden">
-                        <ui:Label name="room-qr-label" text="SCAN TO JOIN" class="qr-card-title hue-text"/>
+                        <!-- A wave runs through the letters every few seconds -->
+                        <WaveText name="room-qr-label" text="SCAN TO JOIN" period="3.5" stagger="0.06" hop-duration="0.42" amplitude="0.25" class="qr-card-title hue-text"/>
                         <!-- Plate (Rectangle 16, tinted the picked hue) with the QR mask layered on top (black or white ink) -->
                         <ui:VisualElement name="room-qr" class="lobby-qr">
                             <ui:VisualElement name="room-qr-code" picking-mode="Ignore" class="lobby-qr-code"/>

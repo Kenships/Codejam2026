@@ -13,7 +13,11 @@
                 <ui:VisualElement name="round-list" class="lb-list"/>
             </ui:VisualElement>
             <ui:VisualElement picking-mode="Ignore" class="lb-footer">
-                <ui:Label name="round-countdown" text="" class="lb-countdown accent-dim-text"/>
+                <!-- "NEXT DRAWING IN" + the number, which drops in each second (LeaderboardUI) -->
+                <ui:VisualElement name="round-countdown-row" picking-mode="Ignore" class="lb-countdown-row">
+                    <ui:Label name="round-countdown" text="" class="lb-countdown accent-dim-text"/>
+                    <ui:Label name="round-countdown-number" text="" class="lb-countdown lb-countdown__number accent-text"/>
+                </ui:VisualElement>
                 <ui:Button name="continue" text="NEXT DRAWING" class="lb-button lb-button--primary"/>
             </ui:VisualElement>
         </ui:VisualElement>
