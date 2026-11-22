@@ -16,7 +16,7 @@ import { SquareHueSlider, hueToHex } from '@/components/SquareHueSlider'
 import { TrueHueTitle } from '@/components/TrueHueTitle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { createMockCompressedDrawing } from '@/lib/drawingCodec'
+import { createMockCompressedDrawing, toDrawingMime } from '@/lib/drawingCodec'
 import { normalizeRoomCode, validateName, validateRoomCode } from '@/lib/protocol'
 import { DEV_MOCK_MODE, relayClient, RelayJoinError } from '@/lib/relayClient'
 import type { PlayerRoundResult } from '@/lib/results'
@@ -231,7 +231,7 @@ export function PlayPage() {
         setGuessHue(null)
         setIncomingDrawing({
           imageBase64: d.image,
-          mime: d.mime === 'image/jpeg' ? 'image/jpeg' : 'image/png',
+          mime: toDrawingMime(d.mime),
           prompt: typeof d.prompt === 'string' ? d.prompt : '',
           artistName: typeof d.artistName === 'string' ? d.artistName : undefined,
         })

@@ -11,13 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { decompressDrawingImageToDataUrl } from '@/lib/drawingCodec'
+import { decompressDrawingImageToDataUrl, type DrawingMime } from '@/lib/drawingCodec'
 import { relayClient } from '@/lib/relayClient'
 
 export interface IncomingRoundDrawing {
   /** GZIP-compressed Base64 image received from the relay/host */
   imageBase64: string
-  mime?: 'image/png' | 'image/jpeg'
+  mime?: DrawingMime
   prompt: string
   artistName?: string
 }

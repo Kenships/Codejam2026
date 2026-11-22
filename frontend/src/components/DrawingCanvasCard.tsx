@@ -14,6 +14,8 @@ import {
   MAX_CANVAS_PX,
   compressWhiteDrawingImage,
   renderStrokesToContext,
+  type CompressedDrawingImage,
+  type DrawingMime,
   type DrawingStroke,
   type NormalizedPoint,
 } from '@/lib/drawingCodec'
@@ -26,10 +28,10 @@ export interface DrawingSubmission {
   strokes: DrawingStroke[]
   /** Uncompressed white-on-black data URL for local preview */
   imageDataUrl: string
-  /** GZIP-compressed image bytes encoded as base64 (no data: prefix) */
+  /** GZIP-compressed 1-bit bitmap encoded as base64 (no data: prefix) */
   imageBase64: string
-  mime: 'image/png' | 'image/jpeg'
-  compression: 'gzip'
+  mime: DrawingMime
+  compression: CompressedDrawingImage['compression']
   width: number
   height: number
 }

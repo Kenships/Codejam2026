@@ -238,7 +238,7 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 |---|---|---|---|
 | `state` | players or one player | `phase`, `round`, `remainingMs` | Send `remainingMs`, never timestamps (device clocks differ). **Retain it** when broadcast. In `drawing`, the phone runs its drawing timer from `remainingMs` (the host picks 30–120 s). |
 | `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
-| `round_drawing` | each guesser (not the artist) | `image` (base64), `mime`, `prompt`, `artistName` | The drawing to guess. ★`prompt` is now the artist's **picked category**. |
+| `round_drawing` | each guesser (not the artist) | `image` (base64, see [Drawing images](#drawing-images)), `mime`, `prompt`, `artistName` | The drawing to guess, forwarded exactly as the artist submitted it. ★`prompt` is now the artist's **picked category**. |
 | `results` | one player | `targetHex`, `roundPoints`, `totalPoints`, `roundRank`, `overallRank`, `totalPlayers` | Sent before the `results` state. |
 | `keepalive` | players | — | Every 30 s so the room isn't closed as idle. Phones ignore it. |
 
@@ -246,11 +246,30 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 
 | `d.t` | Fields | Notes |
 |---|---|---|
-| `pfp_submit` | `image` (base64) | Profile picture, lobby. |
+| `pfp_submit` | `image` (base64), `mime`, `compression`, `w`, `h` | Profile picture, lobby. Same format as `drawing_submit`. |
 | ★`category_pick` | `category: string` | One of the 4 from `your_target.categories`. Send once, before drawing. |
 | `stroke_batch` / `undo` / `clear` | — | Live canvas, to `"host"`. |
 | `drawing_submit` | `prompt`, `image`, `mime`, `compression`, `w`, `h` | ★ `prompt` = the picked category. The host trusts its own record of the pick, not this field. |
 | `guess` | `hex` | During `playing`. |
+
+### Drawing images
+
+Drawings and profile pictures are white ink on black, so `image` is a **1-bit bitmap**, not a PNG
+(`mime: "image/x-truehue-bitmap"`). Before base64 the bytes are gzipped (`compression: "gzip"`;
+`"none"` only if the browser has no `CompressionStream`). Once un-gzipped:
+
+| Bytes | Meaning |
+|---|---|
+| 0–2 | Magic `TH1` |
+| 3–4 | Width, uint16 little-endian (≤ 512) |
+| 5–6 | Height, uint16 little-endian (≤ 512) |
+| 7… | `ceil(w*h/8)` bytes of pixels, row-major from the **top-left**, most significant bit first. `1` = ink (white), `0` = background (black). |
+
+A 512×512 bitmap is 32 KB before gzip, so it fits the frame limit even uncompressed; gzipped it's
+usually a few KB. Decoders sniff the gzip header (`1f 8b`) and the `TH1` magic rather than trusting
+`mime`/`compression`, and still accept the old gzipped PNG/JPEG payloads (e.g. a profile picture
+saved by an older build). Reference code: `frontend/src/lib/drawingCodec.ts` and
+`CodejamBackend/Assets/Scripts/Networking/DrawingImageCodec.cs`.
 
 ### ★ Category pick flow
 

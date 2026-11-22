@@ -6,13 +6,25 @@ export interface DrawingStroke {
   eraser?: boolean
 }
 
+/**
+ * `image/x-truehue-bitmap` is our 1-bit format (see encodeBitmap). PNG/JPEG are still
+ * decoded so profile pictures saved by an older build keep working.
+ */
+export type DrawingMime = 'image/png' | 'image/jpeg' | 'image/x-truehue-bitmap'
+export const BITMAP_MIME = 'image/x-truehue-bitmap' as const
+
+export function toDrawingMime(value: unknown): DrawingMime {
+  return value === 'image/jpeg' || value === BITMAP_MIME ? value : 'image/png'
+}
+
 export interface CompressedDrawingImage {
   /** Local preview data URL (uncompressed data:image/...;base64,...) */
   dataUrl: string
-  /** GZIP-compressed image bytes encoded as raw base64 (no data: prefix) */
+  /** GZIP-compressed bitmap bytes encoded as raw base64 (no data: prefix) */
   base64: string
-  mime: 'image/png' | 'image/jpeg'
-  compression: 'gzip'
+  mime: DrawingMime
+  /** 'none' only when the browser has no CompressionStream; decoders sniff the gzip header anyway. */
+  compression: 'gzip' | 'none'
   width: number
   height: number
   /** Size in bytes of the compressed base64 string */
@@ -81,19 +93,91 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-async function gzipCompressBytes(input: Uint8Array): Promise<Uint8Array> {
+async function gzipCompressBytes(
+  input: Uint8Array
+): Promise<{ bytes: Uint8Array; gzipped: boolean }> {
   if (typeof CompressionStream === 'undefined') {
-    return input
+    return { bytes: input, gzipped: false }
   }
   try {
     const compressedStream = new Blob([new Uint8Array(input)])
       .stream()
       .pipeThrough(new CompressionStream('gzip'))
     const buffer = await new Response(compressedStream).arrayBuffer()
-    return new Uint8Array(buffer)
+    return { bytes: new Uint8Array(buffer), gzipped: true }
   } catch {
-    return input
+    return { bytes: input, gzipped: false }
   }
+}
+
+// ---- 1-bit bitmap format ----
+//
+// Drawings are only ever white ink on black, so each pixel is one bit.
+//   bytes 0-2  magic "TH1"
+//   bytes 3-4  width  (uint16, little-endian)
+//   bytes 5-6  height (uint16, little-endian)
+//   bytes 7..  ceil(w*h/8) bytes of pixels, row-major from the top-left,
+//              most significant bit first; 1 = ink, 0 = background
+// The whole thing is then gzipped. A 512x512 drawing is 32 KB raw (fits the
+// frame budget even uncompressed) and usually a few KB gzipped.
+const BITMAP_MAGIC = [0x54, 0x48, 0x31] as const // "TH1"
+const BITMAP_HEADER_BYTES = 7
+/** Pixels at least this bright count as ink (anti-aliased edges are split down the middle). */
+const INK_THRESHOLD = 128
+
+function isBitmap(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= BITMAP_HEADER_BYTES &&
+    bytes[0] === BITMAP_MAGIC[0] &&
+    bytes[1] === BITMAP_MAGIC[1] &&
+    bytes[2] === BITMAP_MAGIC[2]
+  )
+}
+
+function encodeBitmap(image: ImageData): Uint8Array {
+  const { width, height, data } = image
+  const out = new Uint8Array(BITMAP_HEADER_BYTES + Math.ceil((width * height) / 8))
+  out.set(BITMAP_MAGIC, 0)
+  out[3] = width & 0xff
+  out[4] = width >> 8
+  out[5] = height & 0xff
+  out[6] = height >> 8
+
+  const pixelCount = width * height
+  for (let i = 0; i < pixelCount; i += 1) {
+    // White on black: the red channel is the brightness
+    if (data[i * 4] >= INK_THRESHOLD) {
+      out[BITMAP_HEADER_BYTES + (i >> 3)] |= 0x80 >> (i & 7)
+    }
+  }
+  return out
+}
+
+/** Renders a decoded bitmap as a white-on-black PNG data URL. */
+function bitmapToDataUrl(bytes: Uint8Array): string {
+  const width = bytes[3] | (bytes[4] << 8)
+  const height = bytes[5] | (bytes[6] << 8)
+  if (width === 0 || height === 0) return ''
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+
+  const image = ctx.createImageData(width, height)
+  const pixelCount = width * height
+  for (let i = 0; i < pixelCount; i += 1) {
+    const byte = bytes[BITMAP_HEADER_BYTES + (i >> 3)] ?? 0
+    const value = byte & (0x80 >> (i & 7)) ? 255 : 0
+    const p = i * 4
+    image.data[p] = value
+    image.data[p + 1] = value
+    image.data[p + 2] = value
+    image.data[p + 3] = 255
+  }
+  ctx.putImageData(image, 0, 0)
+  return canvas.toDataURL('image/png')
 }
 
 async function gzipDecompressBytes(input: Uint8Array): Promise<Uint8Array> {
@@ -115,16 +199,21 @@ async function gzipDecompressBytes(input: Uint8Array): Promise<Uint8Array> {
 
 /**
  * Decompresses a GZIP+Base64 image payload received from the relay/backend
- * back into a playable `data:image/...;base64,...` data URL.
+ * back into a playable `data:image/...;base64,...` data URL. The format is
+ * sniffed from the bytes, so `mime` only matters for old PNG/JPEG payloads.
  */
 export async function decompressDrawingImageToDataUrl(
   base64Payload: string,
-  mime: 'image/png' | 'image/jpeg' = 'image/png'
+  mime: DrawingMime = 'image/png'
 ): Promise<string> {
   if (!base64Payload) return ''
   const compressedBytes = dataUrlToBytes(base64Payload)
   const rawImageBytes = await gzipDecompressBytes(compressedBytes)
-  return `data:${mime};base64,${bytesToBase64(rawImageBytes)}`
+  if (isBitmap(rawImageBytes)) {
+    return bitmapToDataUrl(rawImageBytes)
+  }
+  const legacyMime = mime === BITMAP_MIME ? 'image/png' : mime
+  return `data:${legacyMime};base64,${bytesToBase64(rawImageBytes)}`
 }
 
 const MOCK_STROKES: DrawingStroke[] = [
@@ -167,9 +256,9 @@ export async function createMockCompressedDrawing(): Promise<CompressedDrawingIm
 }
 
 /**
- * Always renders the strokes in white (#ffffff) on black (#000000) at <= 512x512,
- * GZIP-compresses the binary image bytes, and returns a base64 payload guaranteed
- * to fit within the relay's 64 KB WebSocket frame limit.
+ * Renders the strokes in white (#ffffff) on black (#000000) at <= 512x512, packs
+ * them into the 1-bit bitmap format (see encodeBitmap) and GZIP-compresses it.
+ * Even uncompressed, a 512x512 bitmap stays under MAX_IMAGE_BASE64_BYTES.
  */
 export async function compressWhiteDrawingImage(params: {
   cssWidth: number
@@ -177,96 +266,42 @@ export async function compressWhiteDrawingImage(params: {
   strokes: DrawingStroke[]
 }): Promise<CompressedDrawingImage> {
   const { cssWidth, cssHeight, strokes } = params
-  const candidateSizes = [MAX_CANVAS_PX, 384, 256] as const
-  const jpegQualities = [0.8, 0.65, 0.5] as const
+
+  const scale = Math.min(1, MAX_CANVAS_PX / Math.max(cssWidth, cssHeight))
+  const pixelWidth = Math.min(MAX_CANVAS_PX, Math.max(1, Math.round(cssWidth * scale)))
+  const pixelHeight = Math.min(MAX_CANVAS_PX, Math.max(1, Math.round(cssHeight * scale)))
 
   const offscreen = document.createElement('canvas')
+  offscreen.width = pixelWidth
+  offscreen.height = pixelHeight
   const ctx = offscreen.getContext('2d')
 
-  for (const maxDim of candidateSizes) {
-    const scale = Math.min(1, maxDim / Math.max(cssWidth, cssHeight))
-    const pixelWidth = Math.min(
-      maxDim,
-      Math.max(1, Math.round(cssWidth * scale))
-    )
-    const pixelHeight = Math.min(
-      maxDim,
-      Math.max(1, Math.round(cssHeight * scale))
-    )
-
-    offscreen.width = pixelWidth
-    offscreen.height = pixelHeight
-
-    if (!ctx) {
-      return {
-        dataUrl: '',
-        base64: '',
-        mime: 'image/png',
-        compression: 'gzip',
-        width: pixelWidth,
-        height: pixelHeight,
-        compressedBase64Bytes: 0,
-      }
-    }
-
-    ctx.setTransform(
-      pixelWidth / cssWidth,
-      0,
-      0,
-      pixelHeight / cssHeight,
-      0,
-      0
-    )
-    renderStrokesToContext(ctx, cssWidth, cssHeight, strokes, '#ffffff')
-
-    // 1. Encode PNG and always GZIP-compress its binary bytes
-    const pngDataUrl = offscreen.toDataURL('image/png')
-    const pngGzipped = await gzipCompressBytes(dataUrlToBytes(pngDataUrl))
-    const pngBase64 = bytesToBase64(pngGzipped)
-    if (pngBase64.length <= MAX_IMAGE_BASE64_BYTES) {
-      return {
-        dataUrl: pngDataUrl,
-        base64: pngBase64,
-        mime: 'image/png',
-        compression: 'gzip',
-        width: pixelWidth,
-        height: pixelHeight,
-        compressedBase64Bytes: pngBase64.length,
-      }
-    }
-
-    // 2. If still above budget, encode JPEG and GZIP-compress its binary bytes
-    for (const quality of jpegQualities) {
-      const jpgDataUrl = offscreen.toDataURL('image/jpeg', quality)
-      const jpgGzipped = await gzipCompressBytes(dataUrlToBytes(jpgDataUrl))
-      const jpgBase64 = bytesToBase64(jpgGzipped)
-      if (jpgBase64.length <= MAX_IMAGE_BASE64_BYTES) {
-        return {
-          dataUrl: jpgDataUrl,
-          base64: jpgBase64,
-          mime: 'image/jpeg',
-          compression: 'gzip',
-          width: pixelWidth,
-          height: pixelHeight,
-          compressedBase64Bytes: jpgBase64.length,
-        }
-      }
+  if (!ctx) {
+    return {
+      dataUrl: '',
+      base64: '',
+      mime: BITMAP_MIME,
+      compression: 'none',
+      width: pixelWidth,
+      height: pixelHeight,
+      compressedBase64Bytes: 0,
     }
   }
 
-  // Final fallback: 256x256 JPEG q=0.4 + GZIP
-  const fallbackDataUrl = offscreen.toDataURL('image/jpeg', 0.4)
-  const fallbackGzipped = await gzipCompressBytes(
-    dataUrlToBytes(fallbackDataUrl)
-  )
-  const fallbackBase64 = bytesToBase64(fallbackGzipped)
+  ctx.setTransform(pixelWidth / cssWidth, 0, 0, pixelHeight / cssHeight, 0, 0)
+  renderStrokesToContext(ctx, cssWidth, cssHeight, strokes, '#ffffff')
+
+  const bitmap = encodeBitmap(ctx.getImageData(0, 0, pixelWidth, pixelHeight))
+  const { bytes, gzipped } = await gzipCompressBytes(bitmap)
+  const base64 = bytesToBase64(bytes)
+
   return {
-    dataUrl: fallbackDataUrl,
-    base64: fallbackBase64,
-    mime: 'image/jpeg',
-    compression: 'gzip',
-    width: offscreen.width,
-    height: offscreen.height,
-    compressedBase64Bytes: fallbackBase64.length,
+    dataUrl: offscreen.toDataURL('image/png'),
+    base64,
+    mime: BITMAP_MIME,
+    compression: gzipped ? 'gzip' : 'none',
+    width: pixelWidth,
+    height: pixelHeight,
+    compressedBase64Bytes: base64.length,
   }
 }

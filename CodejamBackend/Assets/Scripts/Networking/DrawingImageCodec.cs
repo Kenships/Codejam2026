@@ -73,6 +73,12 @@ namespace Codejam.Networking
                 return null;
             }
 
+            if (IsBitmap(imageBytes))
+            {
+                return BitmapToTexture2D(imageBytes, filterMode);
+            }
+
+            // Older clients sent PNG/JPEG bytes
             var texture = new Texture2D(2, 2, TextureFormat.RGBA32, mipChain: false)
             {
                 filterMode = filterMode,
@@ -85,6 +91,50 @@ namespace Codejam.Networking
                 return null;
             }
 
+            return texture;
+        }
+
+        // 1-bit bitmap written by the frontend's drawingCodec.ts (encodeBitmap):
+        //   "TH1", width (uint16 LE), height (uint16 LE), then w*h bits row-major from the
+        //   top-left, most significant bit first, 1 = white ink, 0 = black.
+        private const int BitmapHeaderBytes = 7;
+
+        private static bool IsBitmap(byte[] bytes) =>
+            bytes.Length >= BitmapHeaderBytes && bytes[0] == (byte)'T' && bytes[1] == (byte)'H' && bytes[2] == (byte)'1';
+
+        private static Texture2D BitmapToTexture2D(byte[] bytes, FilterMode filterMode)
+        {
+            int width = bytes[3] | (bytes[4] << 8);
+            int height = bytes[5] | (bytes[6] << 8);
+            if (width <= 0 || height <= 0 || bytes.Length < BitmapHeaderBytes + (width * height + 7) / 8)
+            {
+                Debug.LogWarning($"[DrawingImageCodec] Bad bitmap ({width}x{height}, {bytes.Length} bytes)");
+                return null;
+            }
+
+            Color32 ink = new(255, 255, 255, 255);
+            Color32 background = new(0, 0, 0, 255);
+            var pixels = new Color32[width * height];
+
+            for (int y = 0; y < height; y++)
+            {
+                // The bitmap starts at the top row; Unity textures start at the bottom
+                int dstRow = (height - 1 - y) * width;
+                for (int x = 0; x < width; x++)
+                {
+                    int i = y * width + x;
+                    bool on = (bytes[BitmapHeaderBytes + (i >> 3)] & (0x80 >> (i & 7))) != 0;
+                    pixels[dstRow + x] = on ? ink : background;
+                }
+            }
+
+            var texture = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false)
+            {
+                filterMode = filterMode,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
             return texture;
         }
 
