@@ -599,8 +599,17 @@ public class DrawingPhaseController : MonoBehaviour
 
     #region Buttons
 
-    private void OnSimulateSubmitClicked() => SimulateSubmitRequested?.Invoke();
-    private void OnContinueClicked() => ContinueRequested?.Invoke();
+    private void OnSimulateSubmitClicked()
+    {
+        GameAudioController.EnsureExists().PlayButtonClick();
+        SimulateSubmitRequested?.Invoke();
+    }
+
+    private void OnContinueClicked()
+    {
+        GameAudioController.EnsureExists().PlayButtonClick();
+        ContinueRequested?.Invoke();
+    }
 
     private void RegisterButton(Button button, Action onClick)
     {

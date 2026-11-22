@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Alchemy.Inspector;
+using Core.AudioSystem;
 using PrimeTween;
 using UnityEngine;
 using UnityEngine.Events;
@@ -272,7 +273,11 @@ public class RevealUI : MonoBehaviour
 
         _resultSequence = Sequence.Create()
             .ChainDelay(resultDelay)
-            .ChainCallback(() => Show(_result))
+            .ChainCallback(() =>
+            {
+                Show(_result);
+                GameAudioController.EnsureExists().PlayRevealOutcome(result.Match);
+            })
             .Chain(Tween.Custom(
                 0f,
                 percent,
@@ -421,6 +426,8 @@ public class RevealUI : MonoBehaviour
 
     private void OnPlayAgainClicked()
     {
+        GameAudioController.EnsureExists().PlayButtonClick();
+
         bool handled = PlayAgainRequested != null || onPlayAgain.GetPersistentEventCount() > 0;
 
         PlayAgainRequested?.Invoke();

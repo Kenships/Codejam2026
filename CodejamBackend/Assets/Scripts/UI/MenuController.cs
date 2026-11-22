@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Alchemy.Inspector;
 using Codejam.Networking;
+using Core.AudioSystem;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
@@ -620,6 +621,8 @@ public class MenuController : MonoBehaviour
                 avatar = avatar,
                 ownsAvatarTexture = ownsAvatarTexture
             });
+
+            GameAudioController.EnsureExists().PlayPlayerJoin();
         }
 
         if (colorStage != null)
@@ -949,6 +952,7 @@ public class MenuController : MonoBehaviour
             return;
 
         button.clicked += onClick;
+        button.clicked += PlayButtonClickSfx;
         button.RegisterCallback<PointerEnterEvent, Button>(OnButtonPointerEnter, button);
         button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonPointerLeave, button);
         button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
@@ -961,11 +965,15 @@ public class MenuController : MonoBehaviour
             return;
 
         button.clicked -= onClick;
+        button.clicked -= PlayButtonClickSfx;
         button.UnregisterCallback<PointerEnterEvent, Button>(OnButtonPointerEnter);
         button.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonPointerLeave);
         button.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
         button.UnregisterCallback<FocusOutEvent, Button>(OnButtonFocusOut);
     }
+
+    private static void PlayButtonClickSfx() =>
+        GameAudioController.EnsureExists().PlayButtonClick();
 
     private void OnButtonPointerEnter(PointerEnterEvent evt, Button button)
     {
