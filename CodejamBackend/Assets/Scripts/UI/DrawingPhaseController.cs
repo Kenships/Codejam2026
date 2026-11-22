@@ -169,8 +169,12 @@ public class DrawingPhaseController : MonoBehaviour
             _title.style.display = DisplayStyle.Flex;
     }
 
-    /// <summary>Resets the Drawing Phase UI for a fresh drawing round.</summary>
-    public void BeginDrawingRound(int expectedPlayers, float durationSeconds)
+    /// <summary>
+    /// Resets the Drawing Phase UI for a fresh drawing round. <paramref name="expectedPlayers"/>
+    /// is how many artists are drawing; <paramref name="totalPlayers"/> (when larger) means the
+    /// rest are only guessing this game.
+    /// </summary>
+    public void BeginDrawingRound(int expectedPlayers, float durationSeconds, int totalPlayers = 0)
     {
         if (_transitionRoutine != null)
         {
@@ -191,7 +195,13 @@ public class DrawingPhaseController : MonoBehaviour
             _drawingCard.style.display = DisplayStyle.Flex;
 
         if (_subtitle != null)
-            _subtitle.text = "Everyone is drawing their secret hue";
+        {
+            _subtitle.text = totalPlayers <= _expectedPlayerCount
+                ? "Everyone is drawing their secret hue"
+                : _expectedPlayerCount == 1
+                    ? "1 artist is drawing their secret hue"
+                    : $"{_expectedPlayerCount} artists are drawing their secret hues";
+        }
 
         _artistSpotlight?.AddToClassList("is-hidden");
 

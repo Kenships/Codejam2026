@@ -193,7 +193,9 @@ namespace Codejam.Networking
         #region Host -> Phones
 
         /// <summary>
-        /// Notifies all players that the drawing phase has started and sends each player their secret target hex.
+        /// Sends each artist in <paramref name="players"/> their secret target hex, then tells every
+        /// phone the drawing phase has started. Phones without a target (guessers this game, late
+        /// joiners) show a waiting screen until guessing starts.
         /// </summary>
         public void BroadcastDrawingPhase(
             int round,

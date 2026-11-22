@@ -24,6 +24,15 @@
                                 <ui:Button name="max-players-up" text="+" class="setting-step"/>
                             </ui:VisualElement>
                         </ui:VisualElement>
+                        <!-- How many players draw (picked at random at the start); the rest only guess -->
+                        <ui:VisualElement class="setting-row">
+                            <ui:Label text="ARTISTS" class="setting-label hue-dim-text"/>
+                            <ui:VisualElement class="setting-stepper">
+                                <ui:Button name="artists-down" text="-" class="setting-step"/>
+                                <ui:Label name="artists-value" text="4" class="setting-value hue-text"/>
+                                <ui:Button name="artists-up" text="+" class="setting-step"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
                         <ui:VisualElement class="setting-row">
                             <ui:Label text="DRAWING TIME" class="setting-label hue-dim-text"/>
                             <ui:VisualElement class="setting-stepper">

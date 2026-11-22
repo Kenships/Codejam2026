@@ -22,15 +22,37 @@ public static class GameSessionData
     // ---- Match settings (picked on the Create Game screen; kept for Play Again and the next lobby) ----
 
     private static int _maxPlayers = MaxPlayersLimit;
+    private static int _artistCount = 4;
     private static int _drawingSeconds = 60;
     private static int _guessingSeconds = 30;
 
-    /// <summary>Seats the room hands out (MinPlayersToStart..MaxPlayersLimit).</summary>
+    /// <summary>
+    /// Seats the room hands out (MinPlayersToStart..MaxPlayersLimit). The artist count follows:
+    /// "everyone" stays everyone, and a lower limit pulls it down.
+    /// </summary>
     public static int MaxPlayers
     {
         get => _maxPlayers;
-        set => _maxPlayers = Mathf.Clamp(value, MinPlayersToStart, MaxPlayersLimit);
+        set
+        {
+            bool everyoneDrew = EveryoneDraws;
+            _maxPlayers = Mathf.Clamp(value, MinPlayersToStart, MaxPlayersLimit);
+            _artistCount = everyoneDrew ? _maxPlayers : Mathf.Min(_artistCount, _maxPlayers);
+        }
     }
+
+    /// <summary>
+    /// How many players draw each game (1..MaxPlayers); picked at random when the game
+    /// starts. Everyone else only guesses. At or above the player count, everyone draws.
+    /// </summary>
+    public static int ArtistCount
+    {
+        get => _artistCount;
+        set => _artistCount = Mathf.Clamp(value, 1, MaxPlayers);
+    }
+
+    /// <summary>True when ArtistCount means "everyone" for the current seat limit.</summary>
+    public static bool EveryoneDraws => _artistCount >= _maxPlayers;
 
     /// <summary>Seconds players have to draw (MinPhaseSeconds..MaxPhaseSeconds).</summary>
     public static int DrawingSeconds

@@ -319,7 +319,7 @@ export function PlayPage() {
 
   // Any status other than 'joined' always falls back to the waiting/loading screen
   const activePhase: GamePhase = status !== 'joined' ? 'waiting' : gamePhase
-  // Mid-game joiners in phase "drawing" who never received `your_target` see a waiting screen
+  // In phase "drawing" without `your_target` (not an artist this game, or joined mid-game): waiting screen
   const isDrawingWaiting = activePhase === 'drawing' && drawingTarget === null
   const isWaitingScreen =
     activePhase === 'waiting' ||
@@ -475,10 +475,10 @@ export function PlayPage() {
                 <div className="flex flex-col gap-2 p-2">
                   <CardHeader>
                     <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
-                      Round in Progress
+                      Artists Are Drawing
                     </CardTitle>
                     <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                      Round in progress, you&apos;ll join in when guessing starts
+                      You&apos;re guessing this game. Hang tight, guessing starts once the artists are done<BouncingDots />
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">

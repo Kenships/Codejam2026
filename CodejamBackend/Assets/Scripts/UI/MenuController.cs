@@ -99,6 +99,9 @@ public class MenuController : MonoBehaviour
     private Button _maxPlayersDown;
     private Button _maxPlayersUp;
     private Label _maxPlayersValue;
+    private Button _artistsDown;
+    private Button _artistsUp;
+    private Label _artistsValue;
     private Button _drawingTimeDown;
     private Button _drawingTimeUp;
     private Label _drawingTimeValue;
@@ -198,6 +201,9 @@ public class MenuController : MonoBehaviour
         _maxPlayersDown = _root.Q<Button>("max-players-down");
         _maxPlayersUp = _root.Q<Button>("max-players-up");
         _maxPlayersValue = _root.Q<Label>("max-players-value");
+        _artistsDown = _root.Q<Button>("artists-down");
+        _artistsUp = _root.Q<Button>("artists-up");
+        _artistsValue = _root.Q<Label>("artists-value");
         _drawingTimeDown = _root.Q<Button>("drawing-time-down");
         _drawingTimeUp = _root.Q<Button>("drawing-time-up");
         _drawingTimeValue = _root.Q<Label>("drawing-time-value");
@@ -497,6 +503,8 @@ public class MenuController : MonoBehaviour
         {
             (_maxPlayersDown, DecreaseMaxPlayers),
             (_maxPlayersUp, IncreaseMaxPlayers),
+            (_artistsDown, DecreaseArtists),
+            (_artistsUp, IncreaseArtists),
             (_drawingTimeDown, DecreaseDrawingTime),
             (_drawingTimeUp, IncreaseDrawingTime),
             (_guessingTimeDown, DecreaseGuessingTime),
@@ -526,6 +534,13 @@ public class MenuController : MonoBehaviour
 
     private void IncreaseMaxPlayers() =>
         Step(() => GameSessionData.MaxPlayers, SetMaxPlayers, +1, _maxPlayersValue);
+
+    // An artist count equal to MAX PLAYERS reads "ALL"; one step down from it is MAX PLAYERS - 1
+    private void DecreaseArtists() =>
+        Step(() => GameSessionData.ArtistCount, SetArtistCount, -1, _artistsValue);
+
+    private void IncreaseArtists() =>
+        Step(() => GameSessionData.ArtistCount, SetArtistCount, +1, _artistsValue);
 
     private void DecreaseDrawingTime() =>
         Step(() => GameSessionData.DrawingSeconds, SetDrawingSeconds, -PhaseSecondsStep, _drawingTimeValue);
@@ -561,6 +576,13 @@ public class MenuController : MonoBehaviour
         ApplyMaxPlayersToRelay();
         RefreshSettingsUI();
         RefreshLobbyUI();
+    }
+
+    /// <summary>How many players draw each game (1..MaxPlayers; MaxPlayers shows as "ALL").</summary>
+    public void SetArtistCount(int artists)
+    {
+        GameSessionData.ArtistCount = artists;
+        RefreshSettingsUI();
     }
 
     public void SetDrawingSeconds(int seconds)
@@ -601,8 +623,12 @@ public class MenuController : MonoBehaviour
         int drawing = GameSessionData.DrawingSeconds;
         int guessing = GameSessionData.GuessingSeconds;
 
+        int artists = GameSessionData.ArtistCount;
+
         if (_maxPlayersValue != null)
             _maxPlayersValue.text = maxPlayers.ToString();
+        if (_artistsValue != null)
+            _artistsValue.text = GameSessionData.EveryoneDraws ? "ALL" : artists.ToString();
         if (_drawingTimeValue != null)
             _drawingTimeValue.text = $"{drawing}s";
         if (_guessingTimeValue != null)
@@ -610,6 +636,8 @@ public class MenuController : MonoBehaviour
 
         SetStepperAtLimit(_maxPlayersDown, maxPlayers <= MinSelectableMaxPlayers());
         SetStepperAtLimit(_maxPlayersUp, maxPlayers >= GameSessionData.MaxPlayersLimit);
+        SetStepperAtLimit(_artistsDown, artists <= 1);
+        SetStepperAtLimit(_artistsUp, GameSessionData.EveryoneDraws);
         SetStepperAtLimit(_drawingTimeDown, drawing <= GameSessionData.MinPhaseSeconds);
         SetStepperAtLimit(_drawingTimeUp, drawing >= GameSessionData.MaxPhaseSeconds);
         SetStepperAtLimit(_guessingTimeDown, guessing <= GameSessionData.MinPhaseSeconds);
@@ -1495,6 +1523,8 @@ public class MenuController : MonoBehaviour
         RefreshButton(_startMatchButton);
         RefreshButton(_maxPlayersDown);
         RefreshButton(_maxPlayersUp);
+        RefreshButton(_artistsDown);
+        RefreshButton(_artistsUp);
         RefreshButton(_drawingTimeDown);
         RefreshButton(_drawingTimeUp);
         RefreshButton(_guessingTimeDown);

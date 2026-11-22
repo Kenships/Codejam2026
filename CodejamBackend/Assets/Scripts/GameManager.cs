@@ -45,6 +45,11 @@ public class GameManager : Singleton<GameManager>
              "setting when the match was started from the menu.")]
     [SerializeField, Min(5f)] private float guessingDurationSeconds = 30f;
 
+    [Tooltip("How many players draw each game, picked at random from the connected players when " +
+             "the drawing phase starts; everyone else only guesses. Replaced by the Create Game " +
+             "screen's setting when the match was started from the menu.")]
+    [SerializeField, Min(1)] private int artistCount = 4;
+
     [Tooltip("Phases stop waiting for a phone this many seconds after it disconnects (it can still " +
              "submit if it comes back in time). Short, so a brief network blip doesn't cost a turn.")]
     [SerializeField, Min(0f)] private float disconnectedWaitSeconds = 3f;
@@ -103,6 +108,8 @@ public class GameManager : Singleton<GameManager>
     private Coroutine _phaseRoutine;
     private RevealUI _revealUI;
     private readonly HashSet<string> _submittedDrawingPlayerIds = new();
+    // Players drawing this game (picked in StartDrawingPhase); everyone else only guesses
+    private readonly HashSet<string> _artistIds = new();
     private readonly Dictionary<string, Color> _currentRoundGuesses = new();
     // Points each player earned on the current drawing (guessers, and the artist at reveal)
     private readonly Dictionary<string, int> _currentRoundPoints = new();
@@ -148,6 +155,7 @@ public class GameManager : Singleton<GameManager>
         {
             drawingDurationSeconds = GameSessionData.DrawingSeconds;
             guessingDurationSeconds = GameSessionData.GuessingSeconds;
+            artistCount = GameSessionData.ArtistCount;
         }
 
         EnsurePhaseUIs();
@@ -200,7 +208,9 @@ public class GameManager : Singleton<GameManager>
             return;
         }
 
-        AssignSecretTargetColorsToPlayers();
+        PickArtists();
+        List<GameSessionData.SessionPlayer> artists = GetArtists();
+        AssignSecretTargetColors(artists);
 
         GameSessionData.ClearDrawings();
         _submittedDrawingPlayerIds.Clear();
@@ -214,14 +224,16 @@ public class GameManager : Singleton<GameManager>
         _phaseEndsAt = Time.time + drawingDurationSeconds;
 
         if (drawingPhaseUI != null)
-            drawingPhaseUI.BeginDrawingRound(GameSessionData.Players.Count, drawingDurationSeconds);
+            drawingPhaseUI.BeginDrawingRound(artists.Count, drawingDurationSeconds, GameSessionData.Players.Count);
 
+        // Only artists get a target; the drawing state reaches everyone, and a phone with no
+        // target shows "artists are drawing" until guessing starts
         if (HostRelayClient.Instance != null && HostRelayClient.Instance.IsInRoom)
         {
             HostRelayClient.Instance.BroadcastDrawingPhase(
                 _currentRound,
                 Mathf.RoundToInt(drawingDurationSeconds * 1000f),
-                GameSessionData.Players
+                artists
             );
         }
 
@@ -282,15 +294,44 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
-    /// True once every connected player has submitted a drawing. Disconnected players aren't
-    /// waited for; if nobody is connected, the timer runs out instead (they may come back).
+    /// Picks artistCount artists at random from the connected players (all of them when
+    /// artistCount is at least the player count).
+    /// </summary>
+    private void PickArtists()
+    {
+        _artistIds.Clear();
+
+        List<GameSessionData.SessionPlayer> candidates = GameSessionData.Players.FindAll(
+            p => !_disconnectedSince.ContainsKey(p.playerId));
+
+        System.Random random = useSeed ? new System.Random(seed) : new System.Random();
+        for (int i = candidates.Count - 1; i > 0; i--)
+        {
+            int j = random.Next(i + 1);
+            (candidates[i], candidates[j]) = (candidates[j], candidates[i]);
+        }
+
+        int count = Mathf.Min(Mathf.Max(1, artistCount), candidates.Count);
+        for (int i = 0; i < count; i++)
+            _artistIds.Add(candidates[i].playerId);
+    }
+
+    /// <summary>This game's artists, in player order.</summary>
+    private List<GameSessionData.SessionPlayer> GetArtists() =>
+        GameSessionData.Players.FindAll(p => _artistIds.Contains(p.playerId));
+
+    public bool IsArtist(string playerId) => _artistIds.Contains(playerId);
+
+    /// <summary>
+    /// True once every connected artist has submitted a drawing. Disconnected artists aren't
+    /// waited for; if none is connected, the timer runs out instead (they may come back).
     /// </summary>
     private bool HaveAllDrawings()
     {
         bool anyoneToWaitFor = false;
         foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
         {
-            if (!IsWaitingFor(p.playerId))
+            if (!_artistIds.Contains(p.playerId) || !IsWaitingFor(p.playerId))
                 continue;
 
             anyoneToWaitFor = true;
@@ -322,6 +363,10 @@ public class GameManager : Singleton<GameManager>
         string mime)
     {
         if (string.IsNullOrEmpty(playerId) || _submittedDrawingPlayerIds.Contains(playerId))
+            return;
+
+        // Only this game's artists draw (a guesser's phone never gets a target, so this is a stray)
+        if (_artistIds.Count > 0 && !_artistIds.Contains(playerId))
             return;
 
         GameSessionData.SessionPlayer player = GameSessionData.FindPlayer(playerId);
@@ -865,15 +910,14 @@ public class GameManager : Singleton<GameManager>
         }
     }
 
-    private void AssignSecretTargetColorsToPlayers()
+    /// <summary>Evenly spaced hues across the artists, so no two drawings share a target.</summary>
+    private void AssignSecretTargetColors(List<GameSessionData.SessionPlayer> artists)
     {
         System.Random random = useSeed ? new System.Random(seed) : new System.Random();
-        List<Color> targets = GenerateDistinctColors(Mathf.Max(1, GameSessionData.Players.Count), random);
+        List<Color> targets = GenerateDistinctColors(Mathf.Max(1, artists.Count), random);
 
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.Players[i].secretTargetColor = targets[i];
-        }
+        for (int i = 0; i < artists.Count; i++)
+            artists[i].secretTargetColor = targets[i];
     }
 
     private void EnsurePhaseUIs()
@@ -1150,7 +1194,9 @@ public class GameManager : Singleton<GameManager>
         switch (_currentPhase)
         {
             case GamePhase.Drawing:
-                if (!_submittedDrawingPlayerIds.Contains(playerId))
+                if (!_artistIds.Contains(playerId))
+                    relay.SendPhaseStateTo(playerId, "drawing", _currentRound, remainingMs); // guesser: wait
+                else if (!_submittedDrawingPlayerIds.Contains(playerId))
                     relay.SendDrawingPhaseTo(player, _currentRound, remainingMs);
                 break;
 

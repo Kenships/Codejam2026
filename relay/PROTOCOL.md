@@ -237,7 +237,7 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 | `d.t` | To | Fields | Notes |
 |---|---|---|---|
 | `state` | players or one player | `phase`, `round`, `remainingMs` | Send `remainingMs`, never timestamps (device clocks differ). **Retain it** when broadcast. In `drawing`, the phone runs its drawing timer from `remainingMs` (the host picks 30–120 s). |
-| `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
+| `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`, **only to this game's artists** (the host picks a random set of players, size chosen on the Create Game screen). A phone in `drawing` with no `your_target` is guessing this game and shows a waiting screen. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
 | `round_drawing` | each guesser (not the artist) | `image` (base64, see [Drawing images](#drawing-images)), `mime`, `prompt`, `artistName` | The drawing to guess, forwarded exactly as the artist submitted it. ★`prompt` is now the artist's **picked category**. |
 | `results` | one player | `targetHex`, `roundPoints`, `totalPoints`, `roundRank`, `overallRank`, `totalPlayers` | Sent before the `results` state. |
 | `keepalive` | players | — | Every 30 s so the room isn't closed as idle. Phones ignore it. |
@@ -293,7 +293,7 @@ Unity → guessers {"t":"round_drawing","prompt":"Food","artistName":"Harry", �
 1. **Unity retains every shared `state`**: `send` to `"players"` with `retain: true`. Any phone that
    (re)joins immediately gets the current phase (with `ageMs` to correct `remainingMs`).
 2. **On `player_rejoined`** Unity resends that player's own screen (as today): `drawing` →
-   `your_target` (+ `category`) and `state`; `playing` → `round_drawing` (skip if they're the artist)
+   `your_target` (+ `category`) and `state` for an artist, just `state` for a guesser; `playing` → `round_drawing` (skip if they're the artist)
    and `state`; `results` → their `results`; `finished` → final `results` and `state`.
 3. **On `player_joined` while a game is running** (the new part): add them to the session with
    0 points, then send their screen the same way as a rejoin. They can't draw this game if
