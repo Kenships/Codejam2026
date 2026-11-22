@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Alchemy.Inspector;
+using Core.AudioSystem;
 using PrimeTween;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -347,6 +348,7 @@ public class GuessingPhaseController : MonoBehaviour
         }
 
         int matchPct = ComputeHueMatchPercent(mergedColor, targetColor);
+        GameAudioController.EnsureExists().PlayRevealOutcome(matchPct / 100f);
         if (_matchPercentLabel != null)
         {
             _matchPercentLabel.text = $"{matchPct}% MATCH";
@@ -552,6 +554,7 @@ public class GuessingPhaseController : MonoBehaviour
             return;
 
         button.clicked += onClick;
+        button.clicked += PlayButtonClickSfx;
         button.RegisterCallback<PointerEnterEvent, Button>(OnButtonEnter, button);
         button.RegisterCallback<PointerLeaveEvent, Button>(OnButtonLeave, button);
         button.RegisterCallback<FocusInEvent, Button>(OnButtonFocusIn, button);
@@ -568,6 +571,7 @@ public class GuessingPhaseController : MonoBehaviour
                 continue;
 
             btn.clicked -= cb;
+            btn.clicked -= PlayButtonClickSfx;
             btn.UnregisterCallback<PointerEnterEvent, Button>(OnButtonEnter);
             btn.UnregisterCallback<PointerLeaveEvent, Button>(OnButtonLeave);
             btn.UnregisterCallback<FocusInEvent, Button>(OnButtonFocusIn);
@@ -575,6 +579,9 @@ public class GuessingPhaseController : MonoBehaviour
         }
         _registeredButtons.Clear();
     }
+
+    private static void PlayButtonClickSfx() =>
+        GameAudioController.EnsureExists().PlayButtonClick();
 
     private void OnButtonEnter(PointerEnterEvent evt, Button button)
     {
