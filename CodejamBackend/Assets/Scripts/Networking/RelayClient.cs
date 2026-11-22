@@ -42,7 +42,7 @@ namespace Codejam.Networking
         [SerializeField] private string relayUrl = "wss://truehue-production.up.railway.app";
 
         [Tooltip("The phones' website. Used to build the join link / QR code.")]
-        [SerializeField] private string joinSiteUrl = "https://codejam2026.pages.dev";
+        [SerializeField] private string joinSiteUrl = "https://truehue.kenships.net";
 
         [SerializeField] private bool connectOnStart = true;
 
@@ -75,7 +75,7 @@ namespace Codejam.Networking
         /// <summary>The 4-letter code players type, or null before a room exists.</summary>
         public string RoomCode { get; private set; }
 
-        /// <summary>Link for the lobby screen / QR code, e.g. https://codejam2026.pages.dev/join?room=KXQM</summary>
+        /// <summary>Link for the lobby screen / QR code, e.g. https://truehue.kenships.net/join?room=KXQM</summary>
         public string JoinUrl =>
             RoomCode == null ? null : $"{joinSiteUrl.TrimEnd('/')}/join?room={RoomCode}";
 

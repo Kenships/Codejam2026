@@ -262,6 +262,9 @@ MonoBehaviour:
   autoOpenLobbyOnCreate: 1
   minPlayersToStart: 0
   showSimulateButtons: 1
+  loadGameSceneOnStart: 1
+  gameSceneName: GameScene
+  useRelay: 1
   onCreateGameRequested:
     m_PersistentCalls:
       m_Calls: []
@@ -591,7 +594,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Codejam.Networking.RelayClient
   dontDestroyOnLoad: 1
   relayUrl: wss://truehue-production.up.railway.app
-  joinSiteUrl: https://codejam2026.pages.dev
+  joinSiteUrl: https://truehue.kenships.net
   connectOnStart: 1
   resumePreviousRoom: 1
   keepAliveSeconds: 30
