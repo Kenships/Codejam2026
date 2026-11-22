@@ -261,23 +261,6 @@
     font-size: 22px;
 }
 
-.menu-root .lobby-test-row {
-    width: 100%;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    margin-top: 12px;
-}
-
-.menu-root .menu-button--test.unity-button {
-    min-width: 140px;
-    height: 36px;
-    margin: 0 6px;
-    padding: 4px 14px;
-    font-size: 16px;
-    letter-spacing: 1.5px;
-}
-
 /* ---- Host Lobby Center Join Card ---- */
 
 .menu-root .lobby-header-row {

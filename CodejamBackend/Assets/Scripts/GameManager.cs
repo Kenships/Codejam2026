@@ -114,12 +114,6 @@ public class GameManager : Singleton<GameManager>
     public int CurrentRound => _currentRound;
     public bool IsRunning => _sequenceRoutine != null;
 
-    private static readonly string[] FallbackPlayerNames =
-    {
-        "PRISM", "CHROMA", "SPECTRA", "NEON", "PIXEL", "COBALT",
-        "VERMILION", "CYAN", "MAGENTA", "AMBER", "INDIGO", "IRIS"
-    };
-
     private static readonly string[] SamplePrompts =
     {
         "Golden hour sunset",
@@ -181,9 +175,19 @@ public class GameManager : Singleton<GameManager>
         revealController?.Clear();
         colorPhysics?.ClearAllBodies();
 
-        EnsurePlayersExistForTesting();
-        AssignSecretTargetColorsToPlayers();
+        // No game with fewer than 2 players (e.g. GameScene played on its own, or Play Again
+        // after everyone else left): back to the menu's lobby instead.
         SyncConnectionStatesFromRelay();
+        int connectedPlayers = CountConnectedPlayers();
+        if (connectedPlayers < GameSessionData.MinPlayersToStart)
+        {
+            Debug.LogWarning($"[GameManager] Need at least {GameSessionData.MinPlayersToStart} connected players " +
+                             $"to start a game (have {connectedPlayers}). Returning to the menu.");
+            HandleBackToMenu();
+            return;
+        }
+
+        AssignSecretTargetColorsToPlayers();
 
         GameSessionData.ClearDrawings();
         _submittedDrawingPlayerIds.Clear();
@@ -241,29 +245,8 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
 
-        // Simulated players who didn't submit get a stand-in drawing so offline testing still
-        // has something to guess. Real phones that didn't submit (left, or never pressed
-        // submit) are skipped: a blank drawing would be impossible to guess.
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (!_submittedDrawingPlayerIds.Contains(p.playerId) && IsSimulatedPlayer(p.playerId))
-            {
-                _submittedDrawingPlayerIds.Add(p.playerId);
-                GameSessionData.Drawings.Add(new GameSessionData.SubmittedDrawing
-                {
-                    playerId = p.playerId,
-                    playerName = p.name,
-                    playerColor = p.color,
-                    targetColor = p.secretTargetColor,
-                    prompt = SamplePrompts[i % SamplePrompts.Length],
-                    imageBase64 = "",
-                    mime = "image/png",
-                    texture = null
-                });
-            }
-        }
-
+        // Phones that didn't submit (left, or never pressed submit) are skipped:
+        // a blank drawing would be impossible to guess.
         AllDrawingsSubmitted?.Invoke();
 
         _currentDrawingIndex = 0;
@@ -324,10 +307,6 @@ public class GameManager : Singleton<GameManager>
         }
         return anyoneToWaitFor;
     }
-
-    /// <summary>The menu's and GameScene's offline test players (not real phones).</summary>
-    private static bool IsSimulatedPlayer(string playerId) =>
-        playerId != null && (playerId.StartsWith("p_sim_") || playerId.StartsWith("p_test_"));
 
     private void OnRelayDrawingSubmitted(string playerId, DrawingSubmitPayload payload, Texture2D drawingTexture)
     {
@@ -925,24 +904,6 @@ public class GameManager : Singleton<GameManager>
         }
     }
 
-    private void EnsurePlayersExistForTesting()
-    {
-        if (GameSessionData.Players.Count > 0)
-            return;
-
-        int count = Mathf.Clamp(colorCount, 2, 12);
-        for (int i = 0; i < count; i++)
-        {
-            float hue = Mathf.Repeat(i * 0.61803398875f, 1f);
-            GameSessionData.Players.Add(new GameSessionData.SessionPlayer
-            {
-                playerId = $"p_test_{i + 1}",
-                name = FallbackPlayerNames[i % FallbackPlayerNames.Length],
-                color = Color.HSVToRGB(hue, 0.88f, 0.98f)
-            });
-        }
-    }
-
     private void AssignSecretTargetColorsToPlayers()
     {
         System.Random random = useSeed ? new System.Random(seed) : new System.Random();
@@ -1211,12 +1172,12 @@ public class GameManager : Singleton<GameManager>
     #region Disconnected Players
 
     /// <summary>
-    /// Whether the current phase should wait for this player. Simulated players always count
-    /// (they're filled in by code); a disconnected phone stops counting after disconnectedWaitSeconds.
+    /// Whether the current phase should wait for this player. A disconnected phone stops
+    /// counting after disconnectedWaitSeconds.
     /// </summary>
     private bool IsWaitingFor(string playerId)
     {
-        if (IsSimulatedPlayer(playerId) || !_disconnectedSince.TryGetValue(playerId, out float since))
+        if (!_disconnectedSince.TryGetValue(playerId, out float since))
             return true;
 
         return Time.time - since < disconnectedWaitSeconds;
@@ -1241,6 +1202,18 @@ public class GameManager : Singleton<GameManager>
         Debug.Log($"[GameManager] {playerId} left the room ({reason}); no longer waiting for them.");
     }
 
+    /// <summary>Players in this game whose phone is connected right now.</summary>
+    private int CountConnectedPlayers()
+    {
+        int count = 0;
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (!_disconnectedSince.ContainsKey(p.playerId))
+                count++;
+        }
+        return count;
+    }
+
     /// <summary>The host's room came back (resumed): players may have come or gone meanwhile.</summary>
     private void OnRelayRoomReady(string room, string hostKey) => SyncConnectionStatesFromRelay();
 
@@ -1257,9 +1230,6 @@ public class GameManager : Singleton<GameManager>
 
         foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
         {
-            if (IsSimulatedPlayer(p.playerId))
-                continue;
-
             if (!relay.Players.TryGetValue(p.playerId, out RelayPlayer seat))
                 _disconnectedSince[p.playerId] = float.NegativeInfinity;
             else if (seat.Connected)

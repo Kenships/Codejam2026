@@ -260,8 +260,6 @@ MonoBehaviour:
   document: {fileID: 820417302}
   colorStage: {fileID: 820417305}
   autoOpenLobbyOnCreate: 1
-  minPlayersToStart: 0
-  showSimulateButtons: 1
   loadGameSceneOnStart: 1
   gameSceneName: GameScene
   useRelay: 1
