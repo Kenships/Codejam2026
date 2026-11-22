@@ -10,12 +10,17 @@ export type AddPlayerResult =
     | { ok : true; seat : Seat}
     | { ok: false; code: ErrorCode };
 
+/** A message the host asked the relay to remember, and when (Date.now()) it was sent. */
+export type Retained = { d: Record<string, unknown>; at: number };
+
 export type Seat = {
     playerId: string;
     name: string;
     conn: Conn | null;
     /** Running while the player is disconnected; removes them when it fires. */
     graceTimer: NodeJS.Timeout | null;
+    /** The host's retained message for this player only, replayed when they rejoin. */
+    retained: Retained | null;
 }
 
 
@@ -31,6 +36,8 @@ export class Room {
     private lastActivity: number;
     /** Once true, the room is finished and refuses to start new timers. */
     private closed = false;
+    /** The host's retained room-wide message, replayed to every join and rejoin. */
+    private retained: Retained | null = null;
 
     constructor(code : string, hostKey : string, host : Conn | null) {
         this.code = code;
@@ -58,7 +65,7 @@ export class Room {
 
 
         const newPlayerId = generatePlayerId();
-        const seat : Seat = { playerId: newPlayerId, name : trimmed, conn : conn, graceTimer: null };
+        const seat : Seat = { playerId: newPlayerId, name : trimmed, conn : conn, graceTimer: null, retained: null };
         this.seats.set(newPlayerId, seat);
         return { ok: true, seat};
     }
@@ -163,6 +170,26 @@ export class Room {
 
     getHostKey() {
         return this.hostKey
+    }
+
+    // ---- retained (catch-up) messages ----
+    // The room never looks inside these; it only stores the latest one per slot.
+    // An empty object clears the slot.
+
+    setRetained(d : Record<string, unknown>) {
+        this.retained = Object.keys(d).length > 0 ? { d, at: Date.now() } : null;
+    }
+
+    getRetained() {
+        return this.retained;
+    }
+
+    /** False when there's no such seat. */
+    setSeatRetained(playerId : string, d : Record<string, unknown>) : boolean {
+        const seat = this.seats.get(playerId);
+        if (!seat) return false;
+        seat.retained = Object.keys(d).length > 0 ? { d, at: Date.now() } : null;
+        return true;
     }
 
     // ---- activity ----

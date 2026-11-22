@@ -1,6 +1,6 @@
 # HueSlider Relay Protocol
 
-**Version:** 1
+**Version:** 1.1 (adds `send.retain` catch-up messages; documents the category pick)
 **Audience:** anyone writing a client for the relay (Unity host, React phone app) or changing the relay itself.
 
 The relay is a **dumb message router**. It owns rooms, connections and routing — nothing else.
@@ -55,7 +55,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `host_create` | Host | — | `room_created` |
 | `host_resume` | Host | `room: string`, `hostKey: string` | `host_resumed` |
 | `join` | Player | `room: string`, `name: string`, `playerId?: string` | `joined` |
-| `send` | Anyone in a room | `to: Target`, `d: object` | *(none — forwarded)* |
+| `send` | Anyone in a room | `to: Target`, `d: object`, `retain?: boolean` (host only) | *(none — forwarded)* |
 | `grant_broadcast` | Host | `playerId: string \| null` | *(none)* |
 | `kick` | Host | `playerId: string` | *(none — host gets `player_left`)* |
 
@@ -83,6 +83,27 @@ trying to create/join again is rejected with `already_in_room`.
   responsible for re-sending state when it receives `player_rejoined`.
 - Sending to an unknown `playerId` → `error: unknown_target`.
 
+### Retained messages (catch-up)
+
+The host can add `"retain": true` to a `send`. The relay delivers it as normal **and remembers it**,
+so phones that arrive later catch up instantly, even while Unity is still reacting to the join (or
+the host is briefly disconnected). The relay still never looks inside `d`.
+
+| `to` with `retain: true` | Slot it fills | Replayed to |
+|---|---|---|
+| `"players"` / `"all"` | The room's slot | Every player who **joins or rejoins** from now on |
+| `"<playerId>"` | That player's seat slot | That player only, when they **rejoin** |
+
+- Each slot holds **one** message: a newer retained send to the same slot replaces it.
+  Send `d: {}` with `retain: true` to clear a slot (nothing is delivered for an empty `d`).
+- Replay happens immediately after `joined`: room slot first, then the seat slot. Both arrive as a
+  normal `msg` from `"host"` plus `catchUp: true` and `ageMs` (how long ago the host sent it).
+  **Subtract `ageMs` from any `remainingMs` inside `d`.**
+- A seat slot is freed with the seat (timeout or kick). A brand-new player has an empty seat slot.
+- `retain` from a player (even one holding the broadcast grant) → `error: forbidden`, nothing sent.
+- Retained messages are **in addition to**, not instead of, the host reacting to
+  `player_joined` / `player_rejoined`. They cover the gap until it does.
+
 ### Join / rejoin
 
 - `join` **without** `playerId` → new seat, new `playerId`.
@@ -100,7 +121,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `room_created` | Host | `room`, `hostKey` | After `host_create` |
 | `host_resumed` | Host | `room`, `players: PlayerInfo[]` | After a successful `host_resume` |
 | `joined` | Player | `room`, `playerId`, `name`, `rejoined: boolean` | After `join` |
-| `msg` | Anyone | `from: "host" \| <playerId>`, `d: object` | A forwarded `send` |
+| `msg` | Anyone | `from: "host" \| <playerId>`, `d: object`, `catchUp?: true`, `ageMs?: number` | A forwarded `send`, or a retained one replayed after `joined` (then `catchUp`/`ageMs` are set) |
 | `player_joined` | Host | `playerId`, `name` | New player took a seat |
 | `player_rejoined` | Host | `playerId`, `name` | Player reconnected to their seat |
 | `player_disconnected` | Host | `playerId` | Player's socket dropped; seat is held for 30 s |
@@ -182,29 +203,85 @@ Phone  → {"t":"join","room":"KXQM","name":"Harry","playerId":"p_a1b2"}
 Phone  ← {"t":"joined","room":"KXQM","playerId":"p_a1b2","name":"Harry","rejoined":true}
 Unity  ← {"t":"player_rejoined","playerId":"p_a1b2","name":"Harry"}
 Unity  → {"t":"send","to":"p_a1b2","d":{"t":"snapshot", …}}
+
+-- game in progress; Unity keeps the shared phase retained --
+Unity  → {"t":"send","to":"players","retain":true,"d":{"t":"state","phase":"drawing","round":1,"remainingMs":60000}}
+-- 20 s later a new phone joins mid-game --
+Phone  → {"t":"join","room":"KXQM","name":"Sam"}
+Phone  ← {"t":"joined","room":"KXQM","playerId":"p_c3d4","name":"Sam","rejoined":false}
+Phone  ← {"t":"msg","from":"host","catchUp":true,"ageMs":20012,"d":{"t":"state","phase":"drawing","round":1,"remainingMs":60000}}
+         (phone shows ≈ 40 s left)
+Unity  ← {"t":"player_joined","playerId":"p_c3d4","name":"Sam"}
+Unity  → {"t":"send","to":"p_c3d4","d":{ …whatever Sam's screen needs… }}
 ```
 
 ---
 
 ## 7. Game messages (`d`) — owned by Unity, not the relay
 
-The relay forwards `d` untouched. The game layer should also use a `t` field inside `d`.
-Suggested set (non-normative; the Unity team owns this list):
+The relay forwards `d` untouched; every `d` has its own `t`. This is the set the Unity host and
+the phones use today, plus the **category pick** (new, marked ★). Unity owns this list.
 
-| `d.t` | Direction | Purpose |
+### Phases (`state.phase`)
+
+`waiting` (lobby) → `drawing` → `playing` (guessing one drawing) → `results` → … next drawing …
+→ `finished`. Everyone draws at once in `drawing`; `playing`/`results` repeat once per drawing.
+
+### Host → phone
+
+| `d.t` | To | Fields | Notes |
+|---|---|---|---|
+| `state` | players or one player | `phase`, `round`, `remainingMs` | Send `remainingMs`, never timestamps (device clocks differ). **Retain it** when broadcast. |
+| `your_target` | one player | `hex`, ★`categories: string[]` (exactly 4), ★`category: string \| null` | Sent at the start of `drawing`. `hex` is secret, only ever sent to its owner. `category` is `null` until they pick, then the pick (so a rejoining phone skips the picker). |
+| `round_drawing` | each guesser (not the artist) | `image` (base64), `mime`, `prompt`, `artistName` | The drawing to guess. ★`prompt` is now the artist's **picked category**. |
+| `results` | one player | `targetHex`, `roundPoints`, `totalPoints`, `roundRank`, `overallRank`, `totalPlayers` | Sent before the `results` state. |
+| `keepalive` | players | — | Every 30 s so the room isn't closed as idle. Phones ignore it. |
+
+### Phone → host
+
+| `d.t` | Fields | Notes |
 |---|---|---|
-| `state` | host → all | `phase`, `round`, `remainingMs`, players & scores |
-| `your_target` | host → artist | Secret target hex — **only ever sent to the artist** |
-| `picker_range` | host → each guesser | Two hex bounds for the guess picker |
-| `stroke_batch` | artist → all | Normalized `[0..1]` points, sent every ~100 ms |
-| `undo` / `clear` | artist → all | Canvas edits |
-| `guess` | player → host | `hex` |
-| `guess_submitted` | host → all | Feeds the bubble display (no ΔE yet) |
-| `results` | host → all | Target, guesses sorted by ΔE, scores |
-| `leaderboard` | host → all | Final standings |
-| `snapshot` | host → one player | Full state for a rejoining player |
+| `pfp_submit` | `image` (base64) | Profile picture, lobby. |
+| ★`category_pick` | `category: string` | One of the 4 from `your_target.categories`. Send once, before drawing. |
+| `stroke_batch` / `undo` / `clear` | — | Live canvas, to `"host"`. |
+| `drawing_submit` | `prompt`, `image`, `mime`, `compression`, `w`, `h` | ★ `prompt` = the picked category. The host trusts its own record of the pick, not this field. |
+| `guess` | `hex` | During `playing`. |
 
-Send `remainingMs`, not absolute timestamps — device clocks are not in sync.
+### ★ Category pick flow
+
+```
+Unity → player   {"t":"your_target","hex":"#3FA7D6","categories":["Animal","Food","Place","Weather"],"category":null}
+Unity → players  {"t":"state","phase":"drawing","round":1,"remainingMs":60000}     (retain: true)
+phone            shows the 4 categories → player taps one → canvas opens with it as the prompt
+player → host    {"t":"category_pick","category":"Food"}
+Unity            checks it's one of the 4 offered (ignore otherwise; later picks ignored), stores it
+… drawing …
+player → host    {"t":"drawing_submit","prompt":"Food", …}
+Unity → guessers {"t":"round_drawing","prompt":"Food","artistName":"Harry", …}
+```
+
+- No pick by the end of drawing (or the grace period): Unity picks one of the 4 itself.
+- Resync (`player_rejoined` during `drawing`): resend `your_target` with `category` set to the
+  stored pick, or `null` if they haven't picked yet.
+
+### Catching up players who join or rejoin mid-game
+
+1. **Unity retains every shared `state`**: `send` to `"players"` with `retain: true`. Any phone that
+   (re)joins immediately gets the current phase (with `ageMs` to correct `remainingMs`).
+2. **On `player_rejoined`** Unity resends that player's own screen (as today): `drawing` →
+   `your_target` (+ `category`) and `state`; `playing` → `round_drawing` (skip if they're the artist)
+   and `state`; `results` → their `results`; `finished` → final `results` and `state`.
+3. **On `player_joined` while a game is running** (the new part): add them to the session with
+   0 points, then send their screen the same way as a rejoin. They can't draw this game if
+   `drawing` is already underway, so: during `drawing` send `state` `waiting` to them only (they
+   join in from the first `playing`); during `playing` send them the current `round_drawing`;
+   during `results` they wait for the next drawing. They never count as a missing drawing.
+4. **Phones**: treat a `catchUp` message exactly like a live one, after subtracting `ageMs` from
+   `remainingMs`. A phone in `drawing` with no `your_target` shows a waiting screen.
+
+Optional: Unity can also retain a player's own message (`to: "<playerId>"`, `retain: true`) so a
+rejoining phone is restored even if the host is momentarily away. The slot holds only one message,
+so use it for the one that matters most (e.g. `your_target` during `drawing`).
 
 ---
 

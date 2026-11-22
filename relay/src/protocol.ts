@@ -46,6 +46,13 @@ export type Send = {
     t: "send";
     to: Target;
     d: Record<string, unknown>;
+    /**
+     * Host only. Also remember `d` so late arrivals catch up (see PROTOCOL.md §3 "Retained messages"):
+     * to "players"/"all" → the room's catch-up message, replayed to every join and rejoin;
+     * to "<playerId>"    → that seat's catch-up message, replayed when that player rejoins.
+     * Each slot holds one message; a newer retained send replaces it, and `d: {}` clears it.
+     */
+    retain?: boolean;
 };
 
 export type GrantBroadcast = {
@@ -104,6 +111,10 @@ export type Msg = {
     t: "msg";
     from: "host" | (string & {});
     d: Record<string, unknown>;
+    /** Present (true) only on a retained message replayed on join/rejoin, not on live sends. */
+    catchUp?: true;
+    /** With catchUp: milliseconds since the host sent it. Subtract from any remainingMs inside d. */
+    ageMs?: number;
 };
 
 // ---- Host-only notifications ----
@@ -232,14 +243,17 @@ export function parseClientMessage(raw: string): ParseResult {
         }
 
         case "send": {
-            const { to, d } = parsed;
+            const { to, d, retain } = parsed;
             if (typeof to !== "string" || to.length === 0) {
                 return bad("send.to must be a non-empty string");
             }
             if (!isPlainObject(d)) {
                 return bad("send.d must be a JSON object");
             }
-            return { ok: true, msg: { t: "send", to, d } };
+            if (retain !== undefined && typeof retain !== "boolean") {
+                return bad("send.retain must be a boolean when present");
+            }
+            return { ok: true, msg: retain ? { t: "send", to, d, retain: true } : { t: "send", to, d } };
         }
 
         case "grant_broadcast": {
