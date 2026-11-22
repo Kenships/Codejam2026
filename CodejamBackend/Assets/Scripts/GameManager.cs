@@ -57,8 +57,16 @@ public class GameManager : Singleton<GameManager>
     [Tooltip("Short beat after all players submit drawings before merging icons into the first artist.")]
     [SerializeField, Min(0f)] private float allSubmittedAdvanceDelay = 1.0f;
 
+    [Tooltip("Short beat after the last guess lands, so that guesser's icon pops in around the card " +
+             "before every guesser bursts into their colour.")]
+    [SerializeField, Min(0f)] private float allGuessedAdvanceDelay = 1.0f;
+
     [Tooltip("Seconds to hold the True Hue reveal before automatically advancing to the next drawing.")]
     [SerializeField, Min(1f)] private float revealDurationSeconds = 6f;
+
+    [Tooltip("Seconds the \"no guesses\" message stays up before a drawing nobody guessed a colour " +
+             "for is skipped.")]
+    [SerializeField, Min(0f)] private float skippedDrawingHoldSeconds = 2.5f;
 
     [Tooltip("Seconds the standings stay up after each drawing before the next one (the host can skip).")]
     [SerializeField, Min(1f)] private float leaderboardDurationSeconds = 8f;
@@ -513,6 +521,10 @@ public class GameManager : Singleton<GameManager>
 
             if (HaveAllGuesses(artistId))
             {
+                // Let the last guesser's icon pop in and be seen before everyone bursts
+                if (allGuessedAdvanceDelay > 0f)
+                    yield return new WaitForSeconds(allGuessedAdvanceDelay);
+
                 BeginMergeAndRevealForCurrentDrawing();
                 yield break;
             }
@@ -562,10 +574,16 @@ public class GameManager : Singleton<GameManager>
         _currentRoundGuesses[playerId] = guessedColor;
         _guessOrder[playerId] = _guessOrder.Count;
 
-        double deltaE = HueScoring.DeltaE2000(guessedColor, currentDrawing.targetColor);
-        guesser.streak = HueScoring.UpdateStreak(guesser.streak, deltaE);
-        _currentRoundPoints[playerId] = HueScoring.GuessPoints(
-            deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
+        // White is what a phone sends without a hue picked: they've had their turn (and take a
+        // seat), but it isn't a colour, so it neither scores nor goes into the mix. Scoring then
+        // treats them like someone who didn't guess.
+        if (!IsWhiteGuess(guessedColor))
+        {
+            double deltaE = HueScoring.DeltaE2000(guessedColor, currentDrawing.targetColor);
+            guesser.streak = HueScoring.UpdateStreak(guesser.streak, deltaE);
+            _currentRoundPoints[playerId] = HueScoring.GuessPoints(
+                deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
+        }
 
         // They take a seat around the card in their player colour; the guess stays secret until
         // the round ends and it bursts out of them (see BurstGuessesRoutine)
@@ -590,9 +608,23 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
+    /// White (or near enough: the phone's default before a hue is picked, and the white end of
+    /// its hue bar). Such a guess counts as having guessed but adds no colour and no points.
+    /// </summary>
+    public static bool IsWhiteGuess(Color color)
+    {
+        Color.RGBToHSV(color, out _, out float saturation, out float value);
+        return saturation <= WhiteGuessMaxSaturation && value >= WhiteGuessMinValue;
+    }
+
+    private const float WhiteGuessMaxSaturation = 0.05f;
+    private const float WhiteGuessMinValue = 0.95f;
+
+    /// <summary>
     /// Bursts each guesser, in the order they took their seats, into cubes of their guessed
-    /// colour from where they sit around the card. Every guess gets the same share of totalArea,
-    /// split into pieces sized like SpawnPartitionedCubes' so the cube count stays bounded.
+    /// colour from where they sit around the card. Every colour guess gets the same share of
+    /// totalArea, split into pieces sized like SpawnPartitionedCubes' so the cube count stays
+    /// bounded. A white guess just pops its icon: it adds no colour.
     /// </summary>
     private IEnumerator BurstGuessesRoutine(
         IReadOnlyList<(string playerId, Color guess)> seatOrder,
@@ -601,10 +633,21 @@ public class GameManager : Singleton<GameManager>
         if (colorPhysics == null || seatOrder.Count == 0)
             yield break;
 
+        // An icon added this frame (a guess just before the timer ran out) has no layout yet;
+        // give UI Toolkit a frame to place it so the burst starts from its seat
+        yield return null;
+
         int count = seatOrder.Count;
+        int colorCount = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (!IsWhiteGuess(seatOrder[i].guess))
+                colorCount++;
+        }
+
         (float minArea, float maxArea) = ColorPartitionService.GetUnitAreaRange(
-            count, totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
-        float areaPerGuess = totalArea / count;
+            Mathf.Max(1, colorCount), totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
+        float areaPerGuess = totalArea / Mathf.Max(1, colorCount);
 
         Camera cam = revealController != null ? revealController.RevealCamera : Camera.main;
         float physicsZ = colorPhysics.transform.position.z;
@@ -613,6 +656,14 @@ public class GameManager : Singleton<GameManager>
         for (int i = 0; i < count; i++)
         {
             (string playerId, Color guess) = seatOrder[i];
+
+            if (IsWhiteGuess(guess))
+            {
+                guessingPhaseUI?.BurstGuessedPlayer(playerId);
+                if (stagger != null && i < count - 1)
+                    yield return stagger;
+                continue;
+            }
 
             // No seat on screen (e.g. no guessing UI): burst from the edge of the stage instead
             if (guessingPhaseUI == null ||
@@ -699,15 +750,25 @@ public class GameManager : Singleton<GameManager>
     {
         GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
 
-        // Everyone who guessed bursts into cubes of their guessed colour and the artist's card goes
-        // away. If nobody guessed before time ran out, a neutral grey stands in so the merge
-        // still resolves.
-        guessingPhaseUI?.HideCard();
+        // Only real colours go into the mix (white guesses don't)
+        List<Color> guessedColors = new();
+        foreach (Color guess in _currentRoundGuesses.Values)
+        {
+            if (!IsWhiteGuess(guess))
+                guessedColors.Add(guess);
+        }
 
-        if (_currentRoundGuesses.Count > 0)
-            yield return BurstGuessesRoutine(GuessesInSeatOrder(), new ColorPartitionService());
-        else
-            SpawnPartitionedCubes(new List<Color> { new(0.5f, 0.5f, 0.5f, 1f) }, new ColorPartitionService());
+        // Nobody guessed a colour: skip this drawing (no merge, reveal or scores)
+        if (guessedColors.Count == 0)
+        {
+            yield return SkipDrawingRoutine();
+            yield break;
+        }
+
+        // Everyone who guessed bursts into cubes of their guessed colour and the artist's card
+        // goes away
+        guessingPhaseUI?.HideCard();
+        yield return BurstGuessesRoutine(GuessesInSeatOrder(), new ColorPartitionService());
 
         while (colorPhysics != null && colorPhysics.IsSpawning)
             yield return null;
@@ -723,10 +784,6 @@ public class GameManager : Singleton<GameManager>
             while (colorPhysics.IsSquashing)
                 yield return null;
         }
-
-        List<Color> guessedColors = new(_currentRoundGuesses.Values);
-        if (guessedColors.Count == 0)
-            guessedColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
 
         _totalsBeforeDrawing.Clear();
         for (int i = 0; i < GameSessionData.Players.Count; i++)
@@ -798,6 +855,33 @@ public class GameManager : Singleton<GameManager>
 
         if (showStandings)
             yield return ShowStandingsRoutine(currentDrawing, moreDrawings);
+
+        _sequenceRoutine = null;
+        AdvanceToNextDrawing();
+    }
+
+    /// <summary>
+    /// No colour guesses for this drawing: says so on the card (anyone who sent white pops
+    /// empty), holds for skippedDrawingHoldSeconds, then moves on. Nobody scores, the artist
+    /// included, and no streaks change. The phones move on with the next drawing (or the end).
+    /// </summary>
+    private IEnumerator SkipDrawingRoutine()
+    {
+        Debug.Log($"[GameManager] No colour guesses for drawing {_currentDrawingIndex + 1}; skipping it.");
+
+        guessingPhaseUI?.ShowSkipped();
+
+        List<(string playerId, Color guess)> seated = GuessesInSeatOrder();
+        WaitForSeconds stagger = burstStaggerSeconds > 0f ? new WaitForSeconds(burstStaggerSeconds) : null;
+        for (int i = 0; i < seated.Count; i++)
+        {
+            guessingPhaseUI?.BurstGuessedPlayer(seated[i].playerId);
+            if (stagger != null && i < seated.Count - 1)
+                yield return stagger;
+        }
+
+        if (skippedDrawingHoldSeconds > 0f)
+            yield return new WaitForSeconds(skippedDrawingHoldSeconds);
 
         _sequenceRoutine = null;
         AdvanceToNextDrawing();

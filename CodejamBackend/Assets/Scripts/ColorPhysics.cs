@@ -146,6 +146,26 @@ public class ColorPhysics : MonoBehaviour
     [FormerlySerializedAs("spawnInterval")]
     [SerializeField, Min(0.01f)] private float maxSpawnInterval = 0.15f;
 
+    [Title("Burst")]
+    [Tooltip("How long SpawnBurst pieces fly free (no pull toward the cluster) before the " +
+             "physics gathers them in, so the burst reads as a pop where it happened.")]
+    [SerializeField, Min(0f)] private float burstHoldSeconds = 0.5f;
+
+    [Tooltip("Extra per-step slowdown while a burst piece flies free (1 = none): they shoot " +
+             "out and quickly settle, instead of sailing across the screen.")]
+    [SerializeField, Range(0.5f, 1f)] private float burstDrag = 0.88f;
+
+    [Tooltip("Size a burst piece starts at, as a fraction of its final size; it then tweens up " +
+             "to its correct size over Burst Grow Duration.")]
+    [SerializeField, Range(0.01f, 1f)] private float burstStartScale = 0.05f;
+
+    [Tooltip("How long a burst piece takes to grow to its correct size. Keep it under the " +
+             "GameManager's merge delay so pieces are full size before they merge.")]
+    [SerializeField, Min(0.01f)] private float burstGrowDuration = 0.45f;
+
+    // 0 = no overshoot; higher springs past the final size before settling
+    [SerializeField, Min(0f)] private float burstGrowOvershoot = 1.2f;
+
     [Title("Squash All")]
     // Delay between starting merges (seconds)
     [SerializeField, Min(0.01f)] private float squashAllInterval = 0.25f;
@@ -257,6 +277,10 @@ public class ColorPhysics : MonoBehaviour
     private float _collapseRamp;
     private static Sprite _generatedSquare;
 
+    // SpawnBurst pieces still flying free -> Time.time they rejoin the cluster
+    private readonly Dictionary<ColorBody, float> _burstUntil = new();
+    private readonly List<ColorBody> _expiredBursts = new();
+
     private readonly Queue<(Color color, float radius)> _spawnQueue = new();
     private Coroutine _spawnRoutine;
     // Gap between spawns for what's queued now (see SpawnIntervalFor)
@@ -341,7 +365,23 @@ public class ColorPhysics : MonoBehaviour
 
             _active.Add(body);
         }
+
+        // Burst pieces whose free flight is over (or that merged away) rejoin the cluster
+        if (_burstUntil.Count > 0)
+        {
+            _expiredBursts.Clear();
+            foreach (KeyValuePair<ColorBody, float> pair in _burstUntil)
+            {
+                if (pair.Key == null || Time.time >= pair.Value)
+                    _expiredBursts.Add(pair.Key);
+            }
+
+            foreach (ColorBody body in _expiredBursts)
+                _burstUntil.Remove(body);
+        }
     }
+
+    private bool IsBursting(ColorBody body) => _burstUntil.ContainsKey(body);
 
     /// <summary>
     /// Ranks bodies by hue and saturation, then stores each body's rank
@@ -388,6 +428,9 @@ public class ColorPhysics : MonoBehaviour
             Vector3 velocity =
                 (body.CurrentPos - body.LastPos) *
                 verletDamping;
+
+            if (IsBursting(body))
+                velocity *= burstDrag;
 
             if (velocity.magnitude / dt < minVelocity)
                 velocity = Vector3.zero;
@@ -465,6 +508,14 @@ public class ColorPhysics : MonoBehaviour
 
             Vector3 planeCorrection =
                 -_forward * Vector3.Dot(currentOffset, _forward);
+
+            // Burst pieces fly free for a moment: no pull toward the cluster yet
+            if (IsBursting(body))
+            {
+                body.CurrentPos += planeCorrection;
+                body.LastPos += planeCorrection;
+                continue;
+            }
 
             Vector3 correction = planeCorrection + centeringCorrection;
 
@@ -1561,6 +1612,7 @@ public class ColorPhysics : MonoBehaviour
         CancelMerge(body);
         _bodies.Remove(body);
         _initialized.Remove(body);
+        _burstUntil.Remove(body);
     }
 
     /// <summary>
@@ -1601,6 +1653,7 @@ public class ColorPhysics : MonoBehaviour
         _bodies.Clear();
         _active.Clear();
         _initialized.Clear();
+        _burstUntil.Clear();
     }
 
     [Button]
@@ -1691,9 +1744,11 @@ public class ColorPhysics : MonoBehaviour
 
     /// <summary>
     /// Bursts one body per (color, radius) piece out of a point, all at
-    /// once: each starts a little way from <paramref name="origin"/> and
-    /// flies outward at up to <paramref name="speed"/> units/s, popping in
-    /// from small. Plays the merge effect and sound once for the burst.
+    /// once: each starts a little way from <paramref name="origin"/>, pops
+    /// in from small and flies outward at up to <paramref name="speed"/>
+    /// units/s, free of the cluster's pull for burstHoldSeconds so the pop
+    /// happens where it started. Leaves the merge effect at the burst point
+    /// and plays the merge sound once.
     /// </summary>
     public void SpawnBurst(
         Vector3 origin,
@@ -1711,6 +1766,16 @@ public class ColorPhysics : MonoBehaviour
         // Even spacing around the circle (with jitter) so pieces don't all fly the same way
         float baseAngle = Random.Range(0f, Mathf.PI * 2f);
 
+        // The biggest piece carries the effect, so the pop is sized like the burst
+        int effectIndex = 0;
+        for (int i = 1; i < pieces.Count; i++)
+        {
+            if (pieces[i].radius > pieces[effectIndex].radius)
+                effectIndex = i;
+        }
+
+        float holdUntil = Time.time + burstHoldSeconds;
+
         for (int i = 0; i < pieces.Count; i++)
         {
             (Color color, float radius) = pieces[i];
@@ -1719,16 +1784,26 @@ public class ColorPhysics : MonoBehaviour
                           (i + Random.Range(-0.3f, 0.3f)) * (Mathf.PI * 2f / pieces.Count);
             Vector3 dir = right * Mathf.Cos(angle) + up * Mathf.Sin(angle);
 
+            if (i == effectIndex)
+            {
+                // Left behind at the burst point at full size, before the piece shrinks to pop in
+                ColorBody effectBody = CreateBody(color, radius, origin);
+                effectBody.PlayDetachedEffect();
+                Destroy(effectBody.gameObject);
+            }
+
             ColorBody body = CreateBody(color, radius, origin + dir * (spread * Random.Range(0.5f, 1f)));
             AddBody(body);
 
             // Verlet velocity is CurrentPos - LastPos per step
             body.LastPos = body.CurrentPos - dir * (speed * Random.Range(0.6f, 1f) * dt);
 
-            body.ScaleRadius(radius * 0.3f, radius, mergeSpawnDuration, overshoot: mergeSpawnOvershoot);
+            // Grows from tiny to its correct size; collisions follow the growing radius, so
+            // the pieces shove each other apart as they swell
+            body.ScaleRadius(radius * burstStartScale, radius, burstGrowDuration, overshoot: burstGrowOvershoot);
 
-            if (i == 0)
-                body.PlayMergeEffect();
+            if (burstHoldSeconds > 0f)
+                _burstUntil[body] = holdUntil;
         }
 
         PlaySound(mergeSound);

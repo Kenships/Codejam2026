@@ -28,6 +28,13 @@ public class GuessingPhaseController : MonoBehaviour
     // How long the card takes to fade and shrink away once the guessed players burst
     [SerializeField, Min(0.01f)] private float cardHideDuration = 0.3f;
 
+    [Title("Guesser Pop")]
+    // How long a guesser's icon takes to swell and fade as their colour bursts out of it
+    [SerializeField, Min(0.01f)] private float iconPopDuration = 0.15f;
+
+    // How big the icon swells to (1 = no swell) as it pops
+    [SerializeField, Min(1f)] private float iconPopScale = 1.5f;
+
     public event Action NextDrawingRequested;
     public event Action PlayAgainRequested;
     public event Action BackToMenuRequested;
@@ -300,6 +307,18 @@ public class GuessingPhaseController : MonoBehaviour
         _shownGuessCount = guessedCount;
     }
 
+    /// <summary>Says on the card that nobody guessed a colour, so this drawing is skipped.</summary>
+    public void ShowSkipped()
+    {
+        ShowCard();
+
+        if (_guessCountLabel != null)
+        {
+            _guessCountLabel.Text = "NO GUESSES - SKIPPING...";
+            UiFx.Pop(_guessCountLabel);
+        }
+    }
+
     /// <summary>Updates the card's footer once guessing is over and the guesses start merging.</summary>
     public void ShowMergingState()
     {
@@ -491,14 +510,30 @@ public class GuessingPhaseController : MonoBehaviour
         return true;
     }
 
-    /// <summary>Hides a guessed player's icon as their guess bursts out of it.</summary>
+    /// <summary>
+    /// Pops a guessed player's icon as their guess bursts out of it: a quick swell while it fades,
+    /// uncovering the cubes growing underneath.
+    /// </summary>
     public void BurstGuessedPlayer(string playerId)
     {
         if (string.IsNullOrEmpty(playerId) || !_guessedIcons.TryGetValue(playerId, out VisualElement icon))
             return;
 
-        // Hidden rather than removed, so the others keep their seats mid-burst
-        icon.style.visibility = Visibility.Hidden;
+        // Ends hidden rather than removed, so the others keep their seats mid-burst
+        Tween.StopAll(icon); // e.g. a pop-in still finishing
+        Tween.Custom(
+            target: icon,
+            startValue: 0f,
+            endValue: 1f,
+            duration: iconPopDuration,
+            onValueChange: (el, t) =>
+            {
+                float s = Mathf.Lerp(1f, iconPopScale, t);
+                el.style.scale = new Scale(new Vector3(s, s, 1f));
+                el.style.opacity = 1f - t;
+            },
+            ease: Ease.OutQuad
+        ).OnComplete(icon, el => el.style.visibility = Visibility.Hidden);
 
         if (PersistentPixelBlastBackground.Instance != null)
             PersistentPixelBlastBackground.Instance.AddRipple(SeatPanelPosition(_orderedIcons.IndexOf(icon)));
