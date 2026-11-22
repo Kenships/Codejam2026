@@ -17,7 +17,7 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(UIDocument))]
 public class LeaderboardUI : MonoBehaviour
 {
-    /// <summary>One player's standing. Rank 1 = best; ties share a rank.</summary>
+    /// <summary>One player's standing. Rank 1 = best; every player has their own rank (no ties).</summary>
     public struct Entry
     {
         public string PlayerId;
@@ -50,6 +50,9 @@ public class LeaderboardUI : MonoBehaviour
     [SerializeField] private UIDocument document;
 
     [Header("Rows")]
+    [Tooltip("Most players listed: the top N in the standings, and podium + ranks 4..N on the " +
+             "winners screen. 10 fills the 1080p card; the rest are summed up as \"+N MORE\".")]
+    [SerializeField, Min(3)] private int maxShownPlayers = 10;
     [SerializeField, Min(30f)] private float rowHeight = 64f;
     [SerializeField, Min(30f)] private float othersRowHeight = 52f;
     [SerializeField, Min(0f)] private float rowStagger = 0.06f;
@@ -163,6 +166,10 @@ public class LeaderboardUI : MonoBehaviour
         _playAgain = _root.Q<Button>("play-again");
         _backToMenu = _root.Q<Button>("back-to-menu");
 
+        // Created up front so ApplyAccent tints them along with the rest
+        SetMoreLabel(_roundList, 0);
+        SetMoreLabel(_othersList, 0);
+
         if (_continue != null)
             _continue.clicked += OnContinueClicked;
         if (_playAgain != null)
@@ -245,24 +252,40 @@ public class LeaderboardUI : MonoBehaviour
 
         List<Entry> before = hasHistory ? SortedBy(entries, previous: true) : now;
 
+        // Only the top maxShownPlayers fit. Rows for anyone in the top before OR after this
+        // drawing are built; the list clips at the cutoff, so a row parked just below it
+        // slides up into view (climbed in) or down out of it (dropped out).
+        int shown = Mathf.Min(maxShownPlayers, now.Count);
+        var inTop = new HashSet<string>();
+        for (int i = 0; i < shown; i++)
+        {
+            inTop.Add(now[i].PlayerId);
+            inTop.Add(before[i].PlayerId);
+        }
+
         _roundList.Clear();
-        _roundList.style.height = now.Count * rowHeight;
+        _roundList.style.height = shown * rowHeight;
+        _roundList.style.overflow = Overflow.Hidden;
+        SetMoreLabel(_roundList, now.Count - shown);
 
         var rows = new Dictionary<string, RowRefs>();
         for (int i = 0; i < before.Count; i++)
         {
             Entry e = before[i];
+            if (!inTop.Contains(e.PlayerId))
+                continue;
+
             RowRefs refs = BuildRow(e, rowHeight, showGain: true, shownRank: hasHistory ? e.PreviousRank : e.Rank);
-            refs.Row.style.top = i * rowHeight;
+            refs.Row.style.top = Mathf.Min(i, shown) * rowHeight;
             _roundList.Add(refs.Row);
             rows[e.PlayerId] = refs;
 
             refs.Total.text = Format(hasHistory ? e.PreviousTotal : e.Total);
-            ShowLater(refs.Row, i * rowStagger, id);
+            ShowLater(refs.Row, Mathf.Min(i, shown) * rowStagger, id);
         }
 
         // Slide into the new order, update ranks, count the totals up
-        float reorderAt = reorderDelay + before.Count * rowStagger;
+        float reorderAt = reorderDelay + shown * rowStagger;
         After(reorderAt, id, () =>
         {
             for (int i = 0; i < now.Count; i++)
@@ -271,7 +294,7 @@ public class LeaderboardUI : MonoBehaviour
                 if (!rows.TryGetValue(e.PlayerId, out RowRefs refs))
                     continue;
 
-                refs.Row.style.top = i * rowHeight;
+                refs.Row.style.top = Mathf.Min(i, shown) * rowHeight;
                 SetRank(refs, e.Rank);
 
                 if (hasHistory && e.Total != e.PreviousTotal)
@@ -324,13 +347,15 @@ public class LeaderboardUI : MonoBehaviour
             _podium.Query(className: "lb-podium-crown-wrap").ForEach(c => c.AddToClassList(ShownClass));
         });
 
-        // Everyone else
+        // Everyone else, down to rank maxShownPlayers
         _othersList.Clear();
-        int others = Mathf.Max(0, sorted.Count - 3);
+        int listedUpTo = Mathf.Min(sorted.Count, maxShownPlayers);
+        int others = Mathf.Max(0, listedUpTo - 3);
         _othersCard.EnableInClassList(HiddenClass, others == 0);
         _othersList.style.height = others * othersRowHeight;
+        SetMoreLabel(_othersList, sorted.Count - listedUpTo);
 
-        for (int i = 3; i < sorted.Count; i++)
+        for (int i = 3; i < listedUpTo; i++)
         {
             Entry e = sorted[i];
             RowRefs refs = BuildRow(e, othersRowHeight, showGain: false, shownRank: e.Rank);
@@ -501,6 +526,26 @@ public class LeaderboardUI : MonoBehaviour
         return slot;
     }
 
+    /// <summary>"+N MORE" right under a list (one label per list, reused between shows).</summary>
+    private static void SetMoreLabel(VisualElement list, int hiddenCount)
+    {
+        VisualElement parent = list?.parent;
+        if (parent == null)
+            return;
+
+        Label more = parent.Q<Label>(className: "lb-more");
+        if (more == null)
+        {
+            more = new Label();
+            more.AddToClassList("lb-more");
+            more.AddToClassList("accent-dim-text");
+            parent.Insert(parent.IndexOf(list) + 1, more);
+        }
+
+        more.text = hiddenCount == 1 ? "+1 MORE PLAYER" : $"+{hiddenCount} MORE PLAYERS";
+        more.EnableInClassList(HiddenClass, hiddenCount <= 0);
+    }
+
     private static VisualElement BuildAvatar(Entry e, string className)
     {
         VisualElement avatar = new();
@@ -593,12 +638,20 @@ public class LeaderboardUI : MonoBehaviour
 
     #region Utility
 
-    /// <summary>Sorted best first; ties by name so the order is stable.</summary>
+    /// <summary>
+    /// Sorted best first by the ranks GameManager gave (which already split ties); by score,
+    /// then name, only where a rank is missing.
+    /// </summary>
     private static List<Entry> SortedBy(IReadOnlyList<Entry> entries, bool previous)
     {
         List<Entry> list = new(entries);
         list.Sort((a, b) =>
         {
+            int rankA = previous ? a.PreviousRank : a.Rank;
+            int rankB = previous ? b.PreviousRank : b.Rank;
+            if (rankA > 0 && rankB > 0 && rankA != rankB)
+                return rankA.CompareTo(rankB);
+
             int scoreA = previous ? a.PreviousTotal : a.Total;
             int scoreB = previous ? b.PreviousTotal : b.Total;
             int byScore = scoreB.CompareTo(scoreA);

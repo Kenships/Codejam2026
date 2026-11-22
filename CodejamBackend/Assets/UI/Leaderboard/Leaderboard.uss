@@ -91,6 +91,14 @@
     width: 100%;
 }
 
+/* "+N MORE PLAYERS" under a list cut to the top N (LeaderboardUI.maxShownPlayers) */
+.lb-more {
+    font-size: 20px;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    margin-top: 8px;
+}
+
 .lb-row {
     position: absolute;
     left: 0;

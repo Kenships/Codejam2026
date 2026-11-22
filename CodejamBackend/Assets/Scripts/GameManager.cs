@@ -108,6 +108,11 @@ public class GameManager : Singleton<GameManager>
     private readonly Dictionary<string, int> _currentRoundPoints = new();
     // Everyone's totalPoints before the current drawing was scored (for leaderboard movement)
     private readonly Dictionary<string, int> _totalsBeforeDrawing = new();
+    // Order guesses arrived in for the current drawing (0 = first), for breaking ties
+    private readonly Dictionary<string, int> _guessOrder = new();
+    // Standings (player ids, best first, no shared places) after the last scored drawing, and before it
+    private readonly List<string> _standingsOrder = new();
+    private readonly List<string> _previousStandingsOrder = new();
     // Players whose phone is disconnected, and since when (Time.time). Phases don't wait for them.
     // NegativeInfinity = gone for good (seat released: timed out, kicked or left).
     private readonly Dictionary<string, float> _disconnectedSince = new();
@@ -200,6 +205,9 @@ public class GameManager : Singleton<GameManager>
         GameSessionData.ClearDrawings();
         _submittedDrawingPlayerIds.Clear();
         _currentRoundGuesses.Clear();
+        _guessOrder.Clear();
+        _standingsOrder.Clear();
+        _previousStandingsOrder.Clear();
         _currentDrawingIndex = 0;
 
         SetPhase(GamePhase.Drawing);
@@ -403,6 +411,7 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
         _currentRoundGuesses.Clear();
+        _guessOrder.Clear();
         _currentRoundPoints.Clear();
         colorPhysics?.ClearAllBodies();
 
@@ -498,6 +507,7 @@ public class GameManager : Singleton<GameManager>
             return;
 
         _currentRoundGuesses[playerId] = guessedColor;
+        _guessOrder[playerId] = _guessOrder.Count;
 
         double deltaE = HueScoring.DeltaE2000(guessedColor, currentDrawing.targetColor);
         guesser.streak = HueScoring.UpdateStreak(guesser.streak, deltaE);
@@ -705,30 +715,26 @@ public class GameManager : Singleton<GameManager>
         leaderboardUI.Hide();
     }
 
-    /// <summary>Everyone's standing by totalPoints (ties share a rank), for LeaderboardUI.</summary>
+    /// <summary>
+    /// Everyone's standing by totalPoints for LeaderboardUI, one place each (ties are split as
+    /// in RankPlayers, fixed when the drawing was scored).
+    /// </summary>
     private List<LeaderboardUI.Entry> BuildStandings(string artistId, bool withHistory)
     {
         List<LeaderboardUI.Entry> entries = new();
 
+        // Matches _standingsOrder; anyone who joined since lands by score
+        List<string> order = Ids(RankPlayers(p => p.totalPoints, null, _standingsOrder));
+        // What the last standings showed
+        List<string> previousOrder = withHistory
+            ? Ids(RankPlayers(PreviousTotalOf, null, _previousStandingsOrder))
+            : null;
+
         for (int i = 0; i < GameSessionData.Players.Count; i++)
         {
             GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            int previousTotal = _totalsBeforeDrawing.TryGetValue(p.playerId, out int before) ? before : p.totalPoints;
-
-            int previousRank = 0;
-            if (withHistory)
-            {
-                previousRank = 1;
-                for (int j = 0; j < GameSessionData.Players.Count; j++)
-                {
-                    string otherId = GameSessionData.Players[j].playerId;
-                    int otherBefore = _totalsBeforeDrawing.TryGetValue(otherId, out int ob)
-                        ? ob
-                        : GameSessionData.Players[j].totalPoints;
-                    if (otherBefore > previousTotal)
-                        previousRank++;
-                }
-            }
+            int previousTotal = PreviousTotalOf(p);
+            int previousRank = previousOrder != null ? previousOrder.IndexOf(p.playerId) + 1 : 0;
 
             entries.Add(new LeaderboardUI.Entry
             {
@@ -739,7 +745,7 @@ public class GameManager : Singleton<GameManager>
                 Total = p.totalPoints,
                 PreviousTotal = previousTotal,
                 RoundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0,
-                Rank = RankBy(p.totalPoints, other => other.totalPoints),
+                Rank = order.IndexOf(p.playerId) + 1,
                 PreviousRank = previousRank,
                 IsArtist = p.playerId == artistId
             });
@@ -747,6 +753,9 @@ public class GameManager : Singleton<GameManager>
 
         return entries;
     }
+
+    private int PreviousTotalOf(GameSessionData.SessionPlayer p) =>
+        _totalsBeforeDrawing.TryGetValue(p.playerId, out int before) ? before : p.totalPoints;
 
     private void RequestNextDrawing()
     {
@@ -1013,6 +1022,14 @@ public class GameManager : Singleton<GameManager>
                 p.totalPoints += points;
         }
 
+        // Fix the new standings while this drawing's artist and guess order can still break ties
+        _previousStandingsOrder.Clear();
+        _previousStandingsOrder.AddRange(_standingsOrder);
+        _standingsOrder.Clear();
+        foreach (GameSessionData.SessionPlayer p in RankPlayers(
+                     other => other.totalPoints, artistId, _previousStandingsOrder))
+            _standingsOrder.Add(p.playerId);
+
         Debug.Log($"[GameManager] Scores for {drawing.playerName}'s drawing: {DescribeScores()}");
     }
 
@@ -1022,33 +1039,82 @@ public class GameManager : Singleton<GameManager>
         HostRelayClient relay = HostRelayClient.Instance;
         int count = GameSessionData.Players.Count;
 
+        List<string> roundOrder = Ids(RankPlayers(RoundPointsOf, drawing.playerId, null));
+        List<string> overallOrder = Ids(RankPlayers(p => p.totalPoints, null, _standingsOrder));
+
         for (int i = 0; i < count; i++)
         {
             GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            int roundPoints = _currentRoundPoints.TryGetValue(p.playerId, out int pts) ? pts : 0;
 
             relay.SendResults(
                 p.playerId,
                 drawing.targetColor,
-                roundPoints,
+                RoundPointsOf(p),
                 p.totalPoints,
-                RankBy(roundPoints, other => _currentRoundPoints.TryGetValue(other.playerId, out int o) ? o : 0),
-                RankBy(p.totalPoints, other => other.totalPoints),
+                roundOrder.IndexOf(p.playerId) + 1,
+                overallOrder.IndexOf(p.playerId) + 1,
                 count);
         }
     }
 
-    /// <summary>1 + how many players scored strictly more (ties share a rank).</summary>
-    private static int RankBy(int score, Func<GameSessionData.SessionPlayer, int> scoreOf)
+    private int RoundPointsOf(GameSessionData.SessionPlayer p) =>
+        _currentRoundPoints.TryGetValue(p.playerId, out int points) ? points : 0;
+
+    /// <summary>
+    /// Every player, best first, with no shared places. Equal scores are split by the current
+    /// drawing when <paramref name="artistId"/> is given: its artist first, then guessers in the
+    /// order they guessed, then whoever didn't guess. Anyone still level keeps their place in
+    /// <paramref name="previousOrder"/> (e.g. the last standings), then player order.
+    /// </summary>
+    private List<GameSessionData.SessionPlayer> RankPlayers(
+        Func<GameSessionData.SessionPlayer, int> scoreOf,
+        string artistId,
+        IReadOnlyList<string> previousOrder)
     {
-        int rank = 1;
+        List<GameSessionData.SessionPlayer> ranked = new(GameSessionData.Players);
+        Dictionary<string, int> joinOrder = new();
         for (int i = 0; i < GameSessionData.Players.Count; i++)
+            joinOrder[GameSessionData.Players[i].playerId] = i;
+
+        int ThisDrawing(GameSessionData.SessionPlayer p)
         {
-            if (scoreOf(GameSessionData.Players[i]) > score)
-                rank++;
+            if (artistId == null)
+                return 0;
+            if (p.playerId == artistId)
+                return -1;
+            return _guessOrder.TryGetValue(p.playerId, out int order) ? order : int.MaxValue;
         }
-        return rank;
+
+        int Previously(GameSessionData.SessionPlayer p)
+        {
+            if (previousOrder == null)
+                return 0;
+            int index = -1;
+            for (int i = 0; i < previousOrder.Count; i++)
+            {
+                if (previousOrder[i] == p.playerId)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            return index >= 0 ? index : int.MaxValue;
+        }
+
+        ranked.Sort((a, b) =>
+        {
+            int c = scoreOf(b).CompareTo(scoreOf(a));
+            if (c == 0) c = ThisDrawing(a).CompareTo(ThisDrawing(b));
+            if (c == 0) c = Previously(a).CompareTo(Previously(b));
+            if (c == 0) c = joinOrder[a.playerId].CompareTo(joinOrder[b.playerId]);
+            return c;
+        });
+
+        return ranked;
     }
+
+    private static List<string> Ids(List<GameSessionData.SessionPlayer> players) =>
+        players.ConvertAll(p => p.playerId);
 
     private string DescribeScores()
     {
