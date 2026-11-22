@@ -274,10 +274,9 @@ export function PlayPage() {
   }
 
   const handlePlayNewGame = () => {
-    relayClient.disconnect()
-    const { clearSession, setRoom } = useLoginStore.getState()
-    clearSession()
-    setRoom('')
+    // leave (not just disconnect) so the relay frees this name right away
+    relayClient.leave()
+    useLoginStore.getState().setRoom('')
     navigate('/join')
   }
 

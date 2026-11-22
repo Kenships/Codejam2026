@@ -50,11 +50,6 @@
                     <ui:Button name="back-button" text="BACK" class="menu-button menu-button--secondary"/>
                     <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary"/>
                 </ui:VisualElement>
-
-                <ui:VisualElement name="lobby-test-row" class="lobby-test-row">
-                    <ui:Button name="simulate-join" text="+ ADD PLAYER" class="menu-button menu-button--test"/>
-                    <ui:Button name="simulate-leave" text="- LEAVE" class="menu-button menu-button--test"/>
-                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

@@ -43,6 +43,10 @@ public class GameManager : Singleton<GameManager>
     [Tooltip("Seconds players have to guess each drawing's hue.")]
     [SerializeField, Min(5f)] private float guessingDurationSeconds = 30f;
 
+    [Tooltip("Phases stop waiting for a phone this many seconds after it disconnects (it can still " +
+             "submit if it comes back in time). Short, so a brief network blip doesn't cost a turn.")]
+    [SerializeField, Min(0f)] private float disconnectedWaitSeconds = 3f;
+
     [Tooltip("Short beat after all players submit drawings before merging icons into the first artist.")]
     [SerializeField, Min(0f)] private float allSubmittedAdvanceDelay = 1.0f;
 
@@ -94,6 +98,9 @@ public class GameManager : Singleton<GameManager>
     private readonly Dictionary<string, int> _currentRoundPoints = new();
     // Everyone's totalPoints before the current drawing was scored (for leaderboard movement)
     private readonly Dictionary<string, int> _totalsBeforeDrawing = new();
+    // Players whose phone is disconnected, and since when (Time.time). Phases don't wait for them.
+    // NegativeInfinity = gone for good (seat released: timed out, kicked or left).
+    private readonly Dictionary<string, float> _disconnectedSince = new();
     private float _guessingStartedAt;
     // When the current drawing/guessing countdown ends (Time.time), for resyncing phones
     private float _phaseEndsAt;
@@ -106,12 +113,6 @@ public class GameManager : Singleton<GameManager>
     public GamePhase CurrentPhase => _currentPhase;
     public int CurrentRound => _currentRound;
     public bool IsRunning => _sequenceRoutine != null;
-
-    private static readonly string[] FallbackPlayerNames =
-    {
-        "PRISM", "CHROMA", "SPECTRA", "NEON", "PIXEL", "COBALT",
-        "VERMILION", "CYAN", "MAGENTA", "AMBER", "INDIGO", "IRIS"
-    };
 
     private static readonly string[] SamplePrompts =
     {
@@ -174,7 +175,18 @@ public class GameManager : Singleton<GameManager>
         revealController?.Clear();
         colorPhysics?.ClearAllBodies();
 
-        EnsurePlayersExistForTesting();
+        // No game with fewer than 2 players (e.g. GameScene played on its own, or Play Again
+        // after everyone else left): back to the menu's lobby instead.
+        SyncConnectionStatesFromRelay();
+        int connectedPlayers = CountConnectedPlayers();
+        if (connectedPlayers < GameSessionData.MinPlayersToStart)
+        {
+            Debug.LogWarning($"[GameManager] Need at least {GameSessionData.MinPlayersToStart} connected players " +
+                             $"to start a game (have {connectedPlayers}). Returning to the menu.");
+            HandleBackToMenu();
+            return;
+        }
+
         AssignSecretTargetColorsToPlayers();
 
         GameSessionData.ClearDrawings();
@@ -233,29 +245,8 @@ public class GameManager : Singleton<GameManager>
 
         StopActiveRoutines();
 
-        // Simulated players who didn't submit get a stand-in drawing so offline testing still
-        // has something to guess. Real phones that didn't submit (left, or never pressed
-        // submit) are skipped: a blank drawing would be impossible to guess.
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (!_submittedDrawingPlayerIds.Contains(p.playerId) && IsSimulatedPlayer(p.playerId))
-            {
-                _submittedDrawingPlayerIds.Add(p.playerId);
-                GameSessionData.Drawings.Add(new GameSessionData.SubmittedDrawing
-                {
-                    playerId = p.playerId,
-                    playerName = p.name,
-                    playerColor = p.color,
-                    targetColor = p.secretTargetColor,
-                    prompt = SamplePrompts[i % SamplePrompts.Length],
-                    imageBase64 = "",
-                    mime = "image/png",
-                    texture = null
-                });
-            }
-        }
-
+        // Phones that didn't submit (left, or never pressed submit) are skipped:
+        // a blank drawing would be impossible to guess.
         AllDrawingsSubmitted?.Invoke();
 
         _currentDrawingIndex = 0;
@@ -298,12 +289,24 @@ public class GameManager : Singleton<GameManager>
             CompleteDrawingPhase();
     }
 
-    private bool HaveAllDrawings() =>
-        GameSessionData.Players.Count > 0 && _submittedDrawingPlayerIds.Count >= GameSessionData.Players.Count;
+    /// <summary>
+    /// True once every connected player has submitted a drawing. Disconnected players aren't
+    /// waited for; if nobody is connected, the timer runs out instead (they may come back).
+    /// </summary>
+    private bool HaveAllDrawings()
+    {
+        bool anyoneToWaitFor = false;
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (!IsWaitingFor(p.playerId))
+                continue;
 
-    /// <summary>The menu's and GameScene's offline test players (not real phones).</summary>
-    private static bool IsSimulatedPlayer(string playerId) =>
-        playerId != null && (playerId.StartsWith("p_sim_") || playerId.StartsWith("p_test_"));
+            anyoneToWaitFor = true;
+            if (!_submittedDrawingPlayerIds.Contains(p.playerId))
+                return false;
+        }
+        return anyoneToWaitFor;
+    }
 
     private void OnRelayDrawingSubmitted(string playerId, DrawingSubmitPayload payload, Texture2D drawingTexture)
     {
@@ -462,7 +465,7 @@ public class GameManager : Singleton<GameManager>
         {
             guessingPhaseUI?.SetRemainingSeconds(remaining);
 
-            if (_currentRoundGuesses.Count >= expectedGuessers && expectedGuessers > 0)
+            if (HaveAllGuesses(artistId))
             {
                 BeginMergeAndRevealForCurrentDrawing();
                 yield break;
@@ -568,6 +571,25 @@ public class GameManager : Singleton<GameManager>
         );
 
         colorPhysics.SpawnQueue(pieces);
+    }
+
+    /// <summary>
+    /// True once every connected guesser (everyone but the artist) has guessed. Disconnected
+    /// players aren't waited for; if nobody is connected, the timer runs out instead.
+    /// </summary>
+    private bool HaveAllGuesses(string artistId)
+    {
+        bool anyoneToWaitFor = false;
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (p.playerId == artistId || !IsWaitingFor(p.playerId))
+                continue;
+
+            anyoneToWaitFor = true;
+            if (!_currentRoundGuesses.ContainsKey(p.playerId))
+                return false;
+        }
+        return anyoneToWaitFor;
     }
 
     private int GetExpectedGuesserCount(string artistId)
@@ -882,24 +904,6 @@ public class GameManager : Singleton<GameManager>
         }
     }
 
-    private void EnsurePlayersExistForTesting()
-    {
-        if (GameSessionData.Players.Count > 0)
-            return;
-
-        int count = Mathf.Clamp(colorCount, 2, 12);
-        for (int i = 0; i < count; i++)
-        {
-            float hue = Mathf.Repeat(i * 0.61803398875f, 1f);
-            GameSessionData.Players.Add(new GameSessionData.SessionPlayer
-            {
-                playerId = $"p_test_{i + 1}",
-                name = FallbackPlayerNames[i % FallbackPlayerNames.Length],
-                color = Color.HSVToRGB(hue, 0.88f, 0.98f)
-            });
-        }
-    }
-
     private void AssignSecretTargetColorsToPlayers()
     {
         System.Random random = useSeed ? new System.Random(seed) : new System.Random();
@@ -1014,12 +1018,18 @@ public class GameManager : Singleton<GameManager>
         HostRelayClient.Instance.DrawingSubmitted -= OnRelayDrawingSubmitted;
         HostRelayClient.Instance.GuessSubmitted -= OnRelayGuessSubmitted;
         HostRelayClient.Instance.PlayerRejoined -= OnRelayPlayerRejoined;
+        HostRelayClient.Instance.PlayerDisconnected -= OnRelayPlayerDisconnected;
+        HostRelayClient.Instance.PlayerLeft -= OnRelayPlayerLeft;
+        HostRelayClient.Instance.RoomCreated -= OnRelayRoomReady;
 
         if (subscribe)
         {
             HostRelayClient.Instance.DrawingSubmitted += OnRelayDrawingSubmitted;
             HostRelayClient.Instance.GuessSubmitted += OnRelayGuessSubmitted;
             HostRelayClient.Instance.PlayerRejoined += OnRelayPlayerRejoined;
+            HostRelayClient.Instance.PlayerDisconnected += OnRelayPlayerDisconnected;
+            HostRelayClient.Instance.PlayerLeft += OnRelayPlayerLeft;
+            HostRelayClient.Instance.RoomCreated += OnRelayRoomReady;
         }
     }
 
@@ -1126,6 +1136,8 @@ public class GameManager : Singleton<GameManager>
     /// </summary>
     private void OnRelayPlayerRejoined(string playerId, string name)
     {
+        _disconnectedSince.Remove(playerId);
+
         HostRelayClient relay = HostRelayClient.Instance;
         GameSessionData.SessionPlayer player = GameSessionData.FindPlayer(playerId);
         if (relay == null || !relay.IsInRoom || player == null)
@@ -1152,6 +1164,78 @@ public class GameManager : Singleton<GameManager>
             case GamePhase.Finished:
                 relay.SendPhaseStateTo(playerId, "finished", _currentRound, 0);
                 break;
+        }
+    }
+
+    #endregion
+
+    #region Disconnected Players
+
+    /// <summary>
+    /// Whether the current phase should wait for this player. A disconnected phone stops
+    /// counting after disconnectedWaitSeconds.
+    /// </summary>
+    private bool IsWaitingFor(string playerId)
+    {
+        if (!_disconnectedSince.TryGetValue(playerId, out float since))
+            return true;
+
+        return Time.time - since < disconnectedWaitSeconds;
+    }
+
+    private void OnRelayPlayerDisconnected(string playerId)
+    {
+        if (GameSessionData.FindPlayer(playerId) == null || _disconnectedSince.ContainsKey(playerId))
+            return;
+
+        _disconnectedSince[playerId] = Time.time;
+        Debug.Log($"[GameManager] {playerId} disconnected; not waiting for them after {disconnectedWaitSeconds:0.#} s.");
+    }
+
+    private void OnRelayPlayerLeft(string playerId, string reason)
+    {
+        if (GameSessionData.FindPlayer(playerId) == null)
+            return;
+
+        // The seat is gone, so this id can't come back: stop waiting right away
+        _disconnectedSince[playerId] = float.NegativeInfinity;
+        Debug.Log($"[GameManager] {playerId} left the room ({reason}); no longer waiting for them.");
+    }
+
+    /// <summary>Players in this game whose phone is connected right now.</summary>
+    private int CountConnectedPlayers()
+    {
+        int count = 0;
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (!_disconnectedSince.ContainsKey(p.playerId))
+                count++;
+        }
+        return count;
+    }
+
+    /// <summary>The host's room came back (resumed): players may have come or gone meanwhile.</summary>
+    private void OnRelayRoomReady(string room, string hostKey) => SyncConnectionStatesFromRelay();
+
+    /// <summary>
+    /// Rebuilds who's disconnected from the relay's player list. Needed at the start of a game
+    /// and after the host's own connection resumes, since neither comes with per-player events.
+    /// </summary>
+    private void SyncConnectionStatesFromRelay()
+    {
+        HostRelayClient host = HostRelayClient.Instance;
+        RelayClient relay = host != null ? host.Relay : null;
+        if (relay == null || !host.IsInRoom)
+            return;
+
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (!relay.Players.TryGetValue(p.playerId, out RelayPlayer seat))
+                _disconnectedSince[p.playerId] = float.NegativeInfinity;
+            else if (seat.Connected)
+                _disconnectedSince.Remove(p.playerId);
+            else if (!_disconnectedSince.ContainsKey(p.playerId))
+                _disconnectedSince[p.playerId] = Time.time;
         }
     }
 

@@ -9,6 +9,9 @@ using UnityEngine;
 /// </summary>
 public static class GameSessionData
 {
+    /// <summary>A game needs at least this many connected players (lobby Start Match and Play Again).</summary>
+    public const int MinPlayersToStart = 2;
+
     [Serializable]
     public class SessionPlayer
     {

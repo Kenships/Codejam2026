@@ -65,6 +65,11 @@ export type Kick = {
     playerId: string;
 }
 
+/** A player leaving on purpose: frees the seat (and the name) right away, no grace period. */
+export type Leave = {
+    t: "leave";
+}
+
 export type ClientMessage = (
     | HostCreate
     | HostResume
@@ -72,6 +77,7 @@ export type ClientMessage = (
     | Send
     | GrantBroadcast
     | Kick
+    | Leave
 )
 
 
@@ -141,7 +147,7 @@ export type PlayerDisconnected = {
 export type PlayerLeft = {
     t: "player_left";
     playerId: string;
-    reason: "timeout" | "kicked";
+    reason: "timeout" | "kicked" | "left";
 };
 
 // ---- Player-only notifications ----
@@ -271,6 +277,9 @@ export function parseClientMessage(raw: string): ParseResult {
             }
             return { ok: true, msg: { t: "kick", playerId } };
         }
+
+        case "leave":
+            return { ok: true, msg: { t: "leave" } };
 
         default:
             return bad("Unknown message type");

@@ -282,6 +282,64 @@ describe("player disconnect / rejoin", () => {
     });
 });
 
+describe("leave", () => {
+    test("a dropped player's name stays taken during the grace period", async () => {
+        const { host, room, players } = await setupRoom(["Harry"]);
+        players[0]!.client.close();
+        await host.expect("player_disconnected");
+        const p = await connect(relay.port);
+        p.send({ t: "join", room, name: "Harry" });
+        assert.equal((await p.expect("error")).code, "name_taken");
+    });
+
+    test("leave frees the seat and the name at once; host gets player_left{left}", async () => {
+        const { host, room, players } = await setupRoom(["Harry"]);
+        const a = players[0]!;
+        a.client.send({ t: "leave" });
+        assert.deepEqual(await host.expect("player_left"), { t: "player_left", playerId: a.playerId, reason: "left" });
+        a.client.close();
+        await host.expectSilence(150); // no player_disconnected for a socket that left
+
+        const p = await connect(relay.port);
+        p.send({ t: "join", room, name: "harry" });
+        const joined = await p.expect("joined");
+        assert.equal(joined.rejoined, false);
+        assert.notEqual(joined.playerId, a.playerId);
+        await host.expect("player_joined");
+    });
+
+    test("the old playerId is gone after leave: rejoining with it makes a new seat with the new name", async () => {
+        const { host, room, players } = await setupRoom(["Harry"]);
+        const a = players[0]!;
+        a.client.send({ t: "leave" });
+        await host.expect("player_left");
+
+        const p = await connect(relay.port);
+        p.send({ t: "join", room, name: "Hermione", playerId: a.playerId });
+        const joined = await p.expect("joined");
+        assert.equal(joined.rejoined, false);
+        assert.equal(joined.name, "Hermione");
+    });
+
+    test("after leave the socket can join again", async () => {
+        const { host, room, players } = await setupRoom(["Harry"]);
+        const a = players[0]!;
+        a.client.send({ t: "leave" });
+        await host.expect("player_left");
+        a.client.send({ t: "join", room, name: "Harry" });
+        assert.equal((await a.client.expect("joined")).name, "Harry");
+    });
+
+    test("host can't leave; leave before joining -> not_in_room", async () => {
+        const { host } = await setupRoom([]);
+        host.send({ t: "leave" });
+        assert.equal((await host.expect("error")).code, "forbidden");
+        const c = await connect(relay.port);
+        c.send({ t: "leave" });
+        assert.equal((await c.expect("error")).code, "not_in_room");
+    });
+});
+
 describe("host disconnect / resume", () => {
     test("host drops -> players get host_lost; resume -> host_resumed with players, players get host_back", async () => {
         const { host, room, hostKey, players } = await setupRoom(["A", "B"]);

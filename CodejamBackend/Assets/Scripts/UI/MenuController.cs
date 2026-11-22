@@ -46,12 +46,6 @@ public class MenuController : MonoBehaviour
     [Tooltip("When true, clicking Create Game immediately opens the Host Lobby with a generated room code if no network listener calls SetCreating(true) or OpenLobby().")]
     [SerializeField] private bool autoOpenLobbyOnCreate = true;
 
-    [Tooltip("Minimum number of connected players required before Start Match is allowed (0 allows starting immediately for testing).")]
-    [SerializeField, Min(0)] private int minPlayersToStart = 0;
-
-    [Tooltip("Show the on-screen + ADD PLAYER / - LEAVE simulation buttons inside the lobby card for testing.")]
-    [SerializeField] private bool showSimulateButtons = true;
-
     [Tooltip("Automatically load GameScene when Start Match is pressed.")]
     [SerializeField] private bool loadGameSceneOnStart = true;
 
@@ -94,9 +88,6 @@ public class MenuController : MonoBehaviour
     private Label _lobbyError;
     private Button _backButton;
     private Button _startMatchButton;
-    private VisualElement _testRow;
-    private Button _simulateJoinButton;
-    private Button _simulateLeaveButton;
     private VisualElement _roomQrBox;
     private VisualElement _roomQr;
     private Label _roomJoinSite;
@@ -115,7 +106,7 @@ public class MenuController : MonoBehaviour
     private bool _startingMatch;
     private bool _inLobby;
     private string _currentRoomCode = "";
-    private int _simulatedColorIndex;
+    private int _nextColorIndex;
 
     private RelayClient _relay;
     private PlayerAvatars _avatars;
@@ -169,16 +160,10 @@ public class MenuController : MonoBehaviour
         _lobbyError = _root.Q<Label>("lobby-error");
         _backButton = _root.Q<Button>("back-button");
         _startMatchButton = _root.Q<Button>("start-match");
-        _testRow = _root.Q<VisualElement>("lobby-test-row");
-        _simulateJoinButton = _root.Q<Button>("simulate-join");
-        _simulateLeaveButton = _root.Q<Button>("simulate-leave");
         _roomQrBox = _root.Q<VisualElement>("room-qr-box");
         _roomQr = _root.Q<VisualElement>("room-qr");
         _roomJoinSite = _root.Q<Label>("room-join-site");
         _roomQrUrl = null; // fresh elements: apply the QR again on the next refresh
-
-        if (_testRow != null)
-            _testRow.style.display = showSimulateButtons ? DisplayStyle.Flex : DisplayStyle.None;
 
         if (_hueBar != null)
             _hueBar.ValueChanged += OnHueChanged;
@@ -186,8 +171,6 @@ public class MenuController : MonoBehaviour
         RegisterButton(_createButton, CreateGame);
         RegisterButton(_backButton, CloseLobby);
         RegisterButton(_startMatchButton, StartMatch);
-        RegisterButton(_simulateJoinButton, SimulatePlayerJoin);
-        RegisterButton(_simulateLeaveButton, SimulatePlayerLeave);
 
         _root.RegisterCallback<KeyDownEvent>(OnRootKeyDown);
 
@@ -221,8 +204,6 @@ public class MenuController : MonoBehaviour
         UnregisterButton(_createButton, CreateGame);
         UnregisterButton(_backButton, CloseLobby);
         UnregisterButton(_startMatchButton, StartMatch);
-        UnregisterButton(_simulateJoinButton, SimulatePlayerJoin);
-        UnregisterButton(_simulateLeaveButton, SimulatePlayerLeave);
 
         _root?.UnregisterCallback<KeyDownEvent>(OnRootKeyDown);
 
@@ -370,10 +351,9 @@ public class MenuController : MonoBehaviour
             return;
 
         int connectedCount = GetConnectedPlayerCount();
-        if (connectedCount < minPlayersToStart)
+        if (connectedCount < GameSessionData.MinPlayersToStart)
         {
-            string plural = minPlayersToStart == 1 ? "player" : "players";
-            ShowError($"Need at least {minPlayersToStart} {plural} to start the match.");
+            ShowError($"Need at least {GameSessionData.MinPlayersToStart} players to start the match.");
             return;
         }
 
@@ -478,9 +458,7 @@ public class MenuController : MonoBehaviour
         for (int i = _players.Count - 1; i >= 0; i--)
         {
             string id = _players[i].playerId;
-
-            // Leave the menu's simulated test players alone
-            if (!id.StartsWith("p_sim_") && !_relay.Players.ContainsKey(id))
+            if (!_relay.Players.ContainsKey(id))
                 RemovePlayer(id);
         }
 
@@ -814,8 +792,8 @@ public class MenuController : MonoBehaviour
     private Color NextDistinctPlayerColor()
     {
         // Golden-ratio hue step produces vivid, maximally distinct colours for every joining player
-        float hue = Mathf.Repeat(_simulatedColorIndex * 0.61803398875f + UnityEngine.Random.Range(0f, 0.08f), 1f);
-        _simulatedColorIndex++;
+        float hue = Mathf.Repeat(_nextColorIndex * 0.61803398875f + UnityEngine.Random.Range(0f, 0.08f), 1f);
+        _nextColorIndex++;
         return Color.HSVToRGB(hue, 0.88f, 0.98f);
     }
 
@@ -967,23 +945,9 @@ public class MenuController : MonoBehaviour
 
         if (_startMatchButton != null)
         {
-            bool canStart = !_startingMatch && connectedCount >= minPlayersToStart;
+            bool canStart = !_startingMatch && connectedCount >= GameSessionData.MinPlayersToStart;
             _startMatchButton.SetEnabled(canStart);
             _startMatchButton.style.opacity = canStart ? 1f : 0.5f;
-        }
-
-        if (_simulateJoinButton != null)
-        {
-            bool canAdd = totalJoined < MaxPlayers;
-            _simulateJoinButton.SetEnabled(canAdd);
-            _simulateJoinButton.style.opacity = canAdd ? 1f : 0.45f;
-        }
-
-        if (_simulateLeaveButton != null)
-        {
-            bool canRemove = totalJoined > 0;
-            _simulateLeaveButton.SetEnabled(canRemove);
-            _simulateLeaveButton.style.opacity = canRemove ? 1f : 0.45f;
         }
     }
 
@@ -1172,8 +1136,6 @@ public class MenuController : MonoBehaviour
         RefreshButton(_createButton);
         RefreshButton(_backButton);
         RefreshButton(_startMatchButton);
-        RefreshButton(_simulateJoinButton);
-        RefreshButton(_simulateLeaveButton);
     }
 
     private void RefreshButton(Button button)
@@ -1201,12 +1163,6 @@ public class MenuController : MonoBehaviour
 
     #region Simulation / Testing Actions
 
-    private static readonly string[] SampleNames =
-    {
-        "PRISM", "CHROMA", "SPECTRA", "NEON", "PIXEL", "COBALT",
-        "VERMILION", "CYAN", "MAGENTA", "AMBER", "INDIGO", "IRIS"
-    };
-
     [Title("Debug / Preview (Play Mode)")]
     [Button]
     public void SimulateOpenLobby()
@@ -1221,150 +1177,12 @@ public class MenuController : MonoBehaviour
     }
 
     [Button]
-    public void SimulatePlayerJoin()
-    {
-        SimulateJoinInternal(withPfp: UnityEngine.Random.value < 0.65f);
-    }
-
-    [Button]
-    public void SimulatePlayerJoinWithPfp()
-    {
-        SimulateJoinInternal(withPfp: true);
-    }
-
-    [Button]
-    public void SimulatePlayerJoinNoPfp()
-    {
-        SimulateJoinInternal(withPfp: false);
-    }
-
-    [Button]
-    public void SimulatePlayerLeave()
-    {
-        if (!Application.isPlaying || _players.Count == 0)
-            return;
-
-        RemovePlayer(_players[_players.Count - 1].playerId);
-    }
-
-    [Button]
     public void SimulateBackToCreate()
     {
         if (!Application.isPlaying)
             return;
 
         CloseLobby();
-    }
-
-    private void SimulateJoinInternal(bool withPfp)
-    {
-        if (!Application.isPlaying)
-        {
-            Debug.LogWarning("MenuController preview buttons work in Play Mode.");
-            return;
-        }
-
-        if (!_inLobby)
-            OpenLobby(GenerateRoomCode());
-
-        int index = _players.Count;
-        if (index >= MaxPlayers)
-            return;
-
-        string sampleName = SampleNames[(_simulatedColorIndex) % SampleNames.Length];
-        Color pickedColor = NextDistinctPlayerColor();
-        Texture2D pfp = withPfp ? GenerateSampleDoodlePfp(index) : null;
-
-        AddOrUpdatePlayer(
-            $"p_sim_{Guid.NewGuid():N}",
-            sampleName,
-            pickedColor: pickedColor,
-            connected: true,
-            avatar: pfp,
-            ownsAvatarTexture: pfp != null
-        );
-    }
-
-    /// <summary>
-    /// Generates a crisp 64x64 white-on-black pixel doodle PFP matching the frontend's LobbyPfpCanvas format.
-    /// </summary>
-    private static Texture2D GenerateSampleDoodlePfp(int patternIndex)
-    {
-        const int size = 64;
-        Texture2D tex = new(size, size, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
-
-        Color32 bg = new(0, 0, 0, 255);
-        Color32 ink = new(255, 255, 255, 255);
-        Color32[] pixels = new Color32[size * size];
-
-        for (int i = 0; i < pixels.Length; i++)
-            pixels[i] = bg;
-
-        void PlotSquare(int cx, int cy, int r)
-        {
-            for (int dy = -r; dy <= r; dy++)
-            {
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    int x = cx + dx;
-                    int y = cy + dy;
-                    if (x >= 0 && x < size && y >= 0 && y < size)
-                        pixels[y * size + x] = ink;
-                }
-            }
-        }
-
-        int variant = patternIndex % 4;
-        switch (variant)
-        {
-            case 0: // Smiley face
-                PlotSquare(21, 41, 3);
-                PlotSquare(43, 41, 3);
-                for (int x = 18; x <= 46; x++)
-                {
-                    float t = (x - 32f) / 14f;
-                    int y = 20 + Mathf.RoundToInt(t * t * 7f);
-                    PlotSquare(x, y, 2);
-                }
-                break;
-
-            case 1: // Cool visor / robot face
-                for (int x = 14; x <= 50; x++)
-                    PlotSquare(x, 40, 3);
-                for (int x = 22; x <= 42; x += 4)
-                    PlotSquare(x, 20, 2);
-                break;
-
-            case 2: // Cat face
-                for (int i = 0; i < 12; i++)
-                {
-                    PlotSquare(14 + i, 44 + (11 - Mathf.Abs(i - 5)), 1);
-                    PlotSquare(38 + i, 44 + (11 - Mathf.Abs(i - 5)), 1);
-                }
-                PlotSquare(22, 34, 3);
-                PlotSquare(42, 34, 3);
-                PlotSquare(32, 26, 2);
-                break;
-
-            default: // Star / crown
-                for (int x = 14; x <= 50; x++)
-                    PlotSquare(x, 18, 2);
-                for (int y = 18; y <= 44; y++)
-                {
-                    PlotSquare(14, y, 2);
-                    PlotSquare(50, y, 2);
-                    PlotSquare(32, y, 2);
-                }
-                break;
-        }
-
-        tex.SetPixels32(pixels);
-        tex.Apply(false, false);
-        return tex;
     }
 
     #endregion

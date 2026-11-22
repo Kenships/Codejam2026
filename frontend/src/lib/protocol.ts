@@ -46,7 +46,12 @@ export type SendMessage = {
   d: Record<string, unknown>
 }
 
-export type PlayerClientMessage = JoinMessage | SendMessage
+/** Leaving on purpose: the relay frees the seat and the name at once (no 30 s grace hold). */
+export type LeaveMessage = {
+  t: 'leave'
+}
+
+export type PlayerClientMessage = JoinMessage | SendMessage | LeaveMessage
 
 // ---- Relay -> Client (player-relevant messages) ----
 

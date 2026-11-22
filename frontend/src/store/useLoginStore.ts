@@ -24,6 +24,8 @@ export interface LoginState {
   playerId: string | null
   /** Room code associated with the saved playerId, so we only send playerId when rejoining the same room. */
   sessionRoom: string | null
+  /** Name the saved seat was joined under. A rejoin keeps the seat's name, so a different name means a new seat. */
+  sessionName: string | null
   /** Player-drawn profile picture data URL */
   pfpDataUrl: string | null
   /** Normalized strokes of the player's PFP so it reloads into the lobby canvas across replays */
@@ -59,6 +61,7 @@ const persistedInitialState = {
   room: '',
   playerId: null as string | null,
   sessionRoom: null as string | null,
+  sessionName: null as string | null,
   pfpDataUrl: null as string | null,
   pfpStrokes: [] as DrawingStroke[],
   pfpCompressed: null as SavedPfpCompressed | null,
@@ -95,6 +98,7 @@ export const useLoginStore = create<LoginState>()(
         set({
           room,
           sessionRoom: room,
+          sessionName: name,
           playerId,
           username: name,
           status: 'joined',
@@ -106,6 +110,7 @@ export const useLoginStore = create<LoginState>()(
         set({
           playerId: null,
           sessionRoom: null,
+          sessionName: null,
         }),
       reset: () =>
         set({
@@ -120,6 +125,7 @@ export const useLoginStore = create<LoginState>()(
         room: state.room,
         playerId: state.playerId,
         sessionRoom: state.sessionRoom,
+        sessionName: state.sessionName,
         pfpDataUrl: state.pfpDataUrl,
         pfpStrokes: state.pfpStrokes,
         pfpCompressed: state.pfpCompressed,

@@ -177,6 +177,19 @@ class RelayClient {
     useLoginStore.getState().setConnectionStatus('idle', null)
   }
 
+  /**
+   * Give up the seat on purpose. Without this the relay treats the closed socket as
+   * a dropped phone and holds the seat (and its name) for 30 s, so joining again
+   * with the same name would fail with name_taken.
+   */
+  leave(): void {
+    if (!DEV_MOCK_MODE && this.joined) {
+      this.sendRaw({ t: 'leave' })
+    }
+    this.disconnect()
+    useLoginStore.getState().clearSession()
+  }
+
   join(params: {
     room: string
     name: string
