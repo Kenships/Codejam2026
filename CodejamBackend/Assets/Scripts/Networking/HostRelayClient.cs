@@ -71,6 +71,9 @@ namespace Codejam.Networking
         /// <summary>Arguments: player id, guessed hex (e.g. "#FF5733").</summary>
         public event Action<string, string> GuessSubmitted;
 
+        /// <summary>Arguments: player id, the category they picked to draw (unvalidated).</summary>
+        public event Action<string, string> CategoryPicked;
+
         /// <summary>Every game message from a phone, after the typed events above.</summary>
         public event Action<string, JObject> GameMessageReceived;
 
@@ -231,13 +234,27 @@ namespace Codejam.Networking
             SendPhaseStateTo(player.playerId, "drawing", round, remainingMs);
         }
 
+        /// <summary>
+        /// The player's secret target, plus the categories to pick from and their pick so far
+        /// (null until they pick; set on a resync so the phone skips the picker).
+        /// </summary>
         private void SendTargetTo(GameSessionData.SessionPlayer player)
         {
-            SendToTarget(player.playerId, new JObject
+            JObject target = new()
             {
                 ["t"] = "your_target",
                 ["hex"] = "#" + ColorUtility.ToHtmlStringRGB(player.secretTargetColor)
-            });
+            };
+
+            if (player.categoryOptions != null && player.categoryOptions.Length > 0)
+            {
+                target["categories"] = new JArray(player.categoryOptions);
+                target["category"] = string.IsNullOrEmpty(player.category)
+                    ? JValue.CreateNull()
+                    : new JValue(player.category);
+            }
+
+            SendToTarget(player.playerId, target);
         }
 
         /// <summary>Broadcasts a phase/state update to all connected players.</summary>
@@ -422,6 +439,12 @@ namespace Codejam.Networking
                     string hex = d.Value<string>("hex");
                     if (!string.IsNullOrEmpty(hex))
                         Raise(GuessSubmitted, fromPlayerId, hex);
+                    break;
+
+                case "category_pick":
+                    string category = d["category"]?.Type == JTokenType.String ? (string)d["category"] : null;
+                    if (!string.IsNullOrEmpty(category))
+                        Raise(CategoryPicked, fromPlayerId, category);
                     break;
             }
 

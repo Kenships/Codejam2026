@@ -66,6 +66,12 @@ public static class GameSessionData
 
         /// <summary>Consecutive close guesses (ΔE ≤ 10), for the streak bonus.</summary>
         public int streak;
+
+        /// <summary>The categories offered this drawing phase (see CategoryWordBank), or null.</summary>
+        public string[] categoryOptions;
+
+        /// <summary>The one they picked to draw (their drawing's prompt), or null until they pick.</summary>
+        public string category;
     }
 
     [Serializable]

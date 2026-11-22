@@ -188,6 +188,7 @@ public class GameManager : Singleton<GameManager>
         }
 
         AssignSecretTargetColorsToPlayers();
+        DealCategoriesToPlayers();
 
         GameSessionData.ClearDrawings();
         _submittedDrawingPlayerIds.Clear();
@@ -342,7 +343,7 @@ public class GameManager : Singleton<GameManager>
             playerName = player.name,
             playerColor = player.color,
             targetColor = player.secretTargetColor,
-            prompt = prompt ?? "",
+            prompt = ResolveDrawingPrompt(player, prompt),
             imageBase64 = imageBase64 ?? "",
             mime = mime ?? "image/png",
             texture = drawingTexture
@@ -904,6 +905,60 @@ public class GameManager : Singleton<GameManager>
         }
     }
 
+    /// <summary>Gives every player fresh categories to pick from and clears last game's pick.</summary>
+    private void DealCategoriesToPlayers()
+    {
+        System.Random random = useSeed ? new System.Random(seed + 1) : new System.Random();
+        List<string[]> hands = CategoryWordBank.Deal(GameSessionData.Players.Count, random);
+
+        for (int i = 0; i < GameSessionData.Players.Count; i++)
+        {
+            GameSessionData.Players[i].categoryOptions = hands[i];
+            GameSessionData.Players[i].category = null;
+        }
+    }
+
+    /// <summary>
+    /// A phone picked its category. Only during drawing, only one of the categories that player
+    /// was offered, and only their first pick counts.
+    /// </summary>
+    private void OnRelayCategoryPicked(string playerId, string category)
+    {
+        if (_currentPhase != GamePhase.Drawing)
+            return;
+
+        GameSessionData.SessionPlayer player = GameSessionData.FindPlayer(playerId);
+        if (player == null || player.categoryOptions == null || !string.IsNullOrEmpty(player.category))
+            return;
+
+        if (Array.IndexOf(player.categoryOptions, category) < 0)
+        {
+            Debug.LogWarning($"[GameManager] {player.name} picked \"{category}\", which they weren't offered. Ignored.");
+            return;
+        }
+
+        player.category = category;
+    }
+
+    /// <summary>
+    /// The prompt a drawing is shown with: the player's picked category; if they were offered
+    /// categories but never picked, one of those at random (recorded as their pick); otherwise
+    /// (no categories, e.g. the menu's simulated players) whatever the phone sent.
+    /// </summary>
+    private static string ResolveDrawingPrompt(GameSessionData.SessionPlayer player, string submittedPrompt)
+    {
+        if (!string.IsNullOrEmpty(player.category))
+            return player.category;
+
+        if (player.categoryOptions != null && player.categoryOptions.Length > 0)
+        {
+            player.category = player.categoryOptions[UnityEngine.Random.Range(0, player.categoryOptions.Length)];
+            return player.category;
+        }
+
+        return submittedPrompt ?? "";
+    }
+
     private void EnsurePhaseUIs()
     {
         if (revealController == null)
@@ -1002,6 +1057,7 @@ public class GameManager : Singleton<GameManager>
 
         HostRelayClient.Instance.DrawingSubmitted -= OnRelayDrawingSubmitted;
         HostRelayClient.Instance.GuessSubmitted -= OnRelayGuessSubmitted;
+        HostRelayClient.Instance.CategoryPicked -= OnRelayCategoryPicked;
         HostRelayClient.Instance.PlayerRejoined -= OnRelayPlayerRejoined;
         HostRelayClient.Instance.PlayerDisconnected -= OnRelayPlayerDisconnected;
         HostRelayClient.Instance.PlayerLeft -= OnRelayPlayerLeft;
@@ -1011,6 +1067,7 @@ public class GameManager : Singleton<GameManager>
         {
             HostRelayClient.Instance.DrawingSubmitted += OnRelayDrawingSubmitted;
             HostRelayClient.Instance.GuessSubmitted += OnRelayGuessSubmitted;
+            HostRelayClient.Instance.CategoryPicked += OnRelayCategoryPicked;
             HostRelayClient.Instance.PlayerRejoined += OnRelayPlayerRejoined;
             HostRelayClient.Instance.PlayerDisconnected += OnRelayPlayerDisconnected;
             HostRelayClient.Instance.PlayerLeft += OnRelayPlayerLeft;
