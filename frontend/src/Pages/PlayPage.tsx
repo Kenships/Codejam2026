@@ -331,7 +331,28 @@ export function PlayPage() {
           setDrawingTarget(null)
           setDrawingDeadlineMs(null)
           setDrawingDurationSec(60)
+          if (nextPhase === 'playing') {
+            // Guessers receive `round_drawing` right before `state:"playing"`.
+            // The artist of the round receives `state:"playing"` WITHOUT `round_drawing`.
+            if (receivedRoundDrawingRef.current) {
+              receivedRoundDrawingRef.current = false
               wasGuesserThisRoundRef.current = true
+              setGuessHue(null)
+              setGamePhase('playing')
+            } else {
+              wasGuesserThisRoundRef.current = false
+              setGamePhase('artist_guessing')
+            }
+          } else if (nextPhase === 'results') {
+            // Unity sends state:"results" right after the per-player `results` message;
+            // preserve 'results_artist' so the artist's special card isn't overwritten.
+            setGamePhase((prev) =>
+              prev === 'results_artist' ? 'results_artist' : 'results'
+            )
+          } else {
+            receivedRoundDrawingRef.current = false
+            wasGuesserThisRoundRef.current = false
+            setGamePhase(nextPhase)
           }
         }
       }
@@ -566,20 +587,10 @@ export function PlayPage() {
               <div className="flex flex-col gap-2 p-2">
                 <CardHeader>
                   <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
-                    {drawingTimerEnded ? 'Your Art Is Up!' : 'Drawing Submitted!'}
+                    Drawing Submitted!
                   </CardTitle>
                   <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
-                    {drawingTimerEnded ? (
-                      <>
-                        Waiting for other players to guess your art
-                        <BouncingDots />
-                      </>
-                    ) : (
-                      <>
-                        Waiting for other players to finish drawing
-                        <BouncingDots />
-                      </>
-                    )}
+                    Waiting for other players to finish drawing<BouncingDots />
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
