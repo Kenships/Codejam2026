@@ -21,7 +21,7 @@ public static class GameSessionData
 
     // ---- Match settings (picked on the Create Game screen; kept for Play Again and the next lobby) ----
 
-    private static int _maxPlayers = MaxPlayersLimit;
+    private static int _maxPlayers = 12;
     private static int _artistCount = 4;
     private static int _drawingSeconds = 60;
     private static int _guessingSeconds = 30;

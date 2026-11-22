@@ -92,6 +92,13 @@ public class GameManager : Singleton<GameManager>
     [SerializeField, Min(1)] private int maxCubesPerColor = 6;
 
     [Title("Sequence")]
+    [Tooltip("Gap between guessers bursting into their guessed colour (in seat order, clockwise " +
+             "from the top-left) when guessing ends. 0 = everyone at once.")]
+    [SerializeField, Min(0f)] private float burstStaggerSeconds = 0.06f;
+
+    [Tooltip("How fast (units/s) a guesser's cubes fly out of them when they burst.")]
+    [SerializeField, Min(0f)] private float burstSpeed = 12f;
+
     // Pause after the last body spawns before everything starts merging
     [SerializeField, Min(0f)] private float mergeDelay = 0.8f;
 
@@ -560,8 +567,10 @@ public class GameManager : Singleton<GameManager>
         _currentRoundPoints[playerId] = HueScoring.GuessPoints(
             deltaE, Time.time - _guessingStartedAt, guessingDurationSeconds, guesser.streak);
 
-        // Cubes stay hidden until the round ends (see MergeAndRevealRoutine)
+        // They take a seat around the card in their player colour; the guess stays secret until
+        // the round ends and it bursts out of them (see BurstGuessesRoutine)
         int expectedGuessers = GetExpectedGuesserCount(currentDrawing.playerId);
+        guessingPhaseUI?.MarkPlayerGuessed(guesser);
         guessingPhaseUI?.SetGuessProgress(_currentRoundGuesses.Count, expectedGuessers);
     }
 
@@ -578,6 +587,61 @@ public class GameManager : Singleton<GameManager>
             colors.Count, totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
 
         colorPhysics.SpawnQueue(partitionService.CreateSpawnQueue(colors, totalArea, minArea, maxArea));
+    }
+
+    /// <summary>
+    /// Bursts each guesser, in the order they took their seats, into cubes of their guessed
+    /// colour from where they sit around the card. Every guess gets the same share of totalArea,
+    /// split into pieces sized like SpawnPartitionedCubes' so the cube count stays bounded.
+    /// </summary>
+    private IEnumerator BurstGuessesRoutine(
+        IReadOnlyList<(string playerId, Color guess)> seatOrder,
+        ColorPartitionService partitionService)
+    {
+        if (colorPhysics == null || seatOrder.Count == 0)
+            yield break;
+
+        int count = seatOrder.Count;
+        (float minArea, float maxArea) = ColorPartitionService.GetUnitAreaRange(
+            count, totalArea, maxCubesOnScreen, minCubesPerColor, maxCubesPerColor);
+        float areaPerGuess = totalArea / count;
+
+        Camera cam = revealController != null ? revealController.RevealCamera : Camera.main;
+        float physicsZ = colorPhysics.transform.position.z;
+        WaitForSeconds stagger = burstStaggerSeconds > 0f ? new WaitForSeconds(burstStaggerSeconds) : null;
+
+        for (int i = 0; i < count; i++)
+        {
+            (string playerId, Color guess) = seatOrder[i];
+
+            // No seat on screen (e.g. no guessing UI): burst from the edge of the stage instead
+            if (guessingPhaseUI == null ||
+                !guessingPhaseUI.TryGetGuessedPlayerWorldPosition(playerId, cam, physicsZ, out Vector3 origin))
+            {
+                origin = colorPhysics.transform.position + (Vector3)(UnityEngine.Random.insideUnitCircle.normalized * 5f);
+            }
+
+            List<(Color color, float radius)> pieces = new();
+            foreach (float area in partitionService.PartitionArea(areaPerGuess, minArea, maxArea))
+                pieces.Add((guess, ColorPartitionService.AreaToRadius(area)));
+
+            colorPhysics.SpawnBurst(origin, pieces, burstSpeed);
+            guessingPhaseUI?.BurstGuessedPlayer(playerId);
+
+            if (stagger != null && i < count - 1)
+                yield return stagger;
+        }
+    }
+
+    /// <summary>This round's guesses in the order their players took their seats.</summary>
+    private List<(string playerId, Color guess)> GuessesInSeatOrder()
+    {
+        List<(string playerId, Color guess)> guesses = new(_currentRoundGuesses.Count);
+        foreach (KeyValuePair<string, Color> pair in _currentRoundGuesses)
+            guesses.Add((pair.Key, pair.Value));
+
+        guesses.Sort((a, b) => _guessOrder[a.playerId].CompareTo(_guessOrder[b.playerId]));
+        return guesses;
     }
 
     /// <summary>
@@ -635,13 +699,15 @@ public class GameManager : Singleton<GameManager>
     {
         GameSessionData.SubmittedDrawing currentDrawing = GameSessionData.Drawings[_currentDrawingIndex];
 
-        // Everyone's guesses appear together now, shuffled. If nobody guessed before time ran
-        // out, a neutral grey stands in so the merge still resolves.
-        List<Color> roundColors = new(_currentRoundGuesses.Values);
-        if (roundColors.Count == 0)
-            roundColors.Add(new Color(0.5f, 0.5f, 0.5f, 1f));
+        // Everyone who guessed bursts into cubes of their guessed colour and the artist's card goes
+        // away. If nobody guessed before time ran out, a neutral grey stands in so the merge
+        // still resolves.
+        guessingPhaseUI?.HideCard();
 
-        SpawnPartitionedCubes(roundColors, new ColorPartitionService());
+        if (_currentRoundGuesses.Count > 0)
+            yield return BurstGuessesRoutine(GuessesInSeatOrder(), new ColorPartitionService());
+        else
+            SpawnPartitionedCubes(new List<Color> { new(0.5f, 0.5f, 0.5f, 1f) }, new ColorPartitionService());
 
         while (colorPhysics != null && colorPhysics.IsSpawning)
             yield return null;
@@ -1415,10 +1481,41 @@ public class GameManager : Singleton<GameManager>
         _sequenceRoutine = StartCoroutine(SpawnThenMergeRoutine(colors, partitionService));
     }
 
+    /// <summary>
+    /// Same as the end of a guessing round: hides the artist's card, bursts each seated
+    /// guesser (in the given seat order) into their guessed colour, and merges. Used by the
+    /// layout test scene after seating fake guessers with GuessingPhaseController.MarkPlayerGuessed.
+    /// </summary>
+    public void BurstAndMerge(IReadOnlyList<(string playerId, Color guess)> seatOrder)
+    {
+        if (!Application.isPlaying || colorPhysics == null || seatOrder == null)
+            return;
+
+        StopActiveRoutines();
+        colorPhysics.gameObject.SetActive(true);
+        colorPhysics.ClearAllBodies();
+        guessingPhaseUI?.HideCard();
+
+        ColorPartitionService partitionService = useSeed ? new ColorPartitionService(seed) : new ColorPartitionService();
+        _sequenceRoutine = StartCoroutine(BurstThenMergeRoutine(seatOrder, partitionService));
+    }
+
+    private IEnumerator BurstThenMergeRoutine(
+        IReadOnlyList<(string playerId, Color guess)> seatOrder,
+        ColorPartitionService partitionService)
+    {
+        yield return BurstGuessesRoutine(seatOrder, partitionService);
+        yield return MergeRoutine();
+    }
+
     private IEnumerator SpawnThenMergeRoutine(List<Color> colors, ColorPartitionService partitionService)
     {
         SpawnPartitionedCubes(colors, partitionService);
+        yield return MergeRoutine();
+    }
 
+    private IEnumerator MergeRoutine()
+    {
         while (colorPhysics.IsSpawning)
             yield return null;
 

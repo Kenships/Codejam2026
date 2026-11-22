@@ -21,39 +21,36 @@
     padding: 0;
 }
 
-/* ---- Left Docked Artist & B&W Drawing Card ---- */
+/* ---- Centred Artist & B&W Drawing Card ---- */
 
-/* Screen-filling row the card sits in; whatever the card leaves free on the right is the
-   open stage GuessingPhaseController points the camera's AreaCameraZoom at. */
+/* Screen-filling layer that centres the card, like the join screen's lobby card. */
 .guessing-root .guessing-layout {
     position: absolute;
     left: 0;
     top: 0;
     right: 0;
     bottom: 0;
-    flex-direction: row;
-    padding: 40px;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Full width (drawing centred on screen) until the first guess, then GuessingPhaseController
-   sets an inline % width to dock it left; the transition slides it over and the drawing refits. */
-.guessing-root .guessing-sidebar {
-    width: 100%;
+/* Sized to stay inside the player ring (PlayerRingLayout): the corner seats sit just outside
+   its width and the top/bottom seats just outside its height, at one ring and at two. */
+.guessing-root .guessing-card {
+    width: 41%;
+    height: 50%;
     flex-shrink: 0;
-    padding: 20px 24px;
+    padding: 16px 20px;
     background-color: rgba(0, 0, 0, 0.84);
     border-width: 2px;
     border-color: rgb(255, 255, 255);
-    transition-property: width;
-    transition-duration: 0.5s;
-    transition-timing-function: ease-in-out-cubic;
 }
 
 .guessing-root .sidebar-top-row {
     flex-direction: row;
     align-items: center;
     flex-shrink: 0;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
 }
 
 .guessing-root .sidebar-round-col {
@@ -166,7 +163,7 @@
     letter-spacing: 1px;
     -unity-text-align: middle-center;
     white-space: normal;
-    margin-top: 14px;
+    margin-top: 10px;
     flex-shrink: 0;
     color: rgb(255, 255, 255);
 }
@@ -176,7 +173,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    margin-top: 10px;
+    margin-top: 6px;
 }
 
 .guessing-root .guess-count {
@@ -196,6 +193,92 @@
     margin: 0 1.6px 0 0;
     padding: 0;
     letter-spacing: 0;
+}
+
+/* ---- Guessed Player Icons (Clockwise Around The Card, Like Join Screen) ---- */
+
+.guessing-root .guessed-icons-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+.guessing-root .guessed-player-icon {
+    position: absolute;
+    translate: -50% -50%;
+    align-items: center;
+    justify-content: center;
+}
+
+.guessing-root .guessed-player-icon__cube {
+    width: 92px;
+    height: 92px;
+    border-width: 3px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(255, 255, 255);
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.guessing-root .guessed-player-icon__pfp {
+    width: 70px;
+    height: 70px;
+    background-color: rgba(0, 0, 0, 0.55);
+}
+
+.guessing-root .guessed-player-icon__check {
+    position: absolute;
+    right: -10px;
+    top: -10px;
+    padding: 2px 6px;
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    background-color: rgb(0, 0, 0);
+    font-size: 14px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.guessing-root .guessed-player-icon__name {
+    padding: 2px 10px;
+    background-color: rgba(0, 0, 0, 0.78);
+    border-width: 2px;
+    border-color: rgb(255, 255, 255);
+    font-size: 22px;
+    -unity-font-style: bold;
+    letter-spacing: 1.4px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    text-shadow: 0 0 10px rgb(0, 0, 0);
+}
+
+/* More than 12 icons: a second ring opens up (PlayerRingLayout), so everything shrinks */
+.guessing-root .guessed-icons-layer.is-crowded .guessed-player-icon__cube {
+    width: 62px;
+    height: 62px;
+    margin-bottom: 6px;
+}
+
+.guessing-root .guessed-icons-layer.is-crowded .guessed-player-icon__pfp {
+    width: 46px;
+    height: 46px;
+}
+
+.guessing-root .guessed-icons-layer.is-crowded .guessed-player-icon__check {
+    right: -8px;
+    top: -8px;
+    padding: 1px 4px;
+    font-size: 10px;
+}
+
+.guessing-root .guessed-icons-layer.is-crowded .guessed-player-icon__name {
+    padding: 1px 6px;
+    font-size: 15px;
+    letter-spacing: 1px;
 }
 
 /* ---- Buttons ---- */

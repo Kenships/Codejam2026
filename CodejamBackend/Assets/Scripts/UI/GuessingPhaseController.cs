@@ -8,11 +8,12 @@ using UnityEngine.UIElements;
 
 /// <summary>
 /// Drives the Guessing, Merge Reveal, and Game Finished overlays in GameScene:
-/// - Guessing: card showing the artist's icon, their black-and-white drawing (or stand-in B&W
-///   drawing icon) aspect-fitted as large as the card allows, clue prompt, 30s timer, and guess
-///   progress. The card spans the screen until the first guess, then docks left so ColorPhysics
-///   can render all guessed colour cubes on the open stage (the camera's AreaCameraZoom is
-///   pointed at that stage).
+/// - Guessing: centred card showing the artist's icon, their black-and-white drawing (or stand-in
+///   B&W drawing icon) aspect-fitted as large as the card allows, clue prompt, 30s timer, and guess
+///   progress. Each player who guesses pops in around the card, clockwise from the top-left like
+///   the join screen (PlayerRingLayout). When guessing ends, GameManager bursts each of them into
+///   cubes of their guessed colour (TryGetGuessedPlayerWorldPosition / BurstGuessedPlayer) and
+///   the card is hidden (HideCard) while the cubes merge.
 /// - Reveal: tints the drawing with the True Hue and shows the bottom Reveal Banner comparing
 ///   the room's merged colour vs the artist's True Hue.
 /// - Finished: full-screen rainbow-shifting completion screen once all drawings are done.
@@ -23,23 +24,17 @@ public class GuessingPhaseController : MonoBehaviour
     [SerializeField, Required] private UIDocument document;
     [SerializeField, Min(1f)] private float finishedRainbowDegPerSec = 24f;
 
-    [Title("Guess Stage")]
-    // Camera zoom that frames the guessed cubes (defaults to the one in the scene)
-    [SerializeField] private AreaCameraZoom stageZoom;
-
-    // Sidebar width once guesses arrive, as a % of the layout's width (before that it spans it all)
-    [SerializeField, Range(20f, 100f)] private float dockedSidebarPercent = 44f;
-
-    // Gap (panel px) kept between the docked sidebar / screen edges and the guessed cubes
-    [SerializeField, Min(0f)] private float stagePadding = 40f;
+    [Title("Card Hide")]
+    // How long the card takes to fade and shrink away once the guessed players burst
+    [SerializeField, Min(0.01f)] private float cardHideDuration = 0.3f;
 
     public event Action NextDrawingRequested;
     public event Action PlayAgainRequested;
     public event Action BackToMenuRequested;
 
     private VisualElement _root;
-    private VisualElement _layout;
-    private VisualElement _sidebar;
+    private VisualElement _card;
+    private VisualElement _iconsLayer;
     private Label _roundLabel;
     private Label _timerLabel;
     private UiFx.TimerWarning _timerWarning; // red + pop + tick in the last seconds
@@ -75,12 +70,16 @@ public class GuessingPhaseController : MonoBehaviour
     private readonly HashSet<Button> _focusedButtons = new();
     private readonly List<Texture2D> _generatedStandInTextures = new();
 
+    // Guessed players' icons by player id, and in seat order (seat = order they guessed in)
+    private readonly Dictionary<string, VisualElement> _guessedIcons = new();
+    private readonly List<VisualElement> _orderedIcons = new();
+    private Tween _cardHideTween;
+
     private Color _accentColor = Color.white;
     private float _finishedHueDeg;
     private float _drawingAspect = 1f;
     private bool _isVisible;
     private bool _isFinishedVisible;
-    private bool _isSidebarDocked;
 
     private void Reset() => document = GetComponent<UIDocument>();
 
@@ -99,8 +98,8 @@ public class GuessingPhaseController : MonoBehaviour
         if (_root == null)
             return;
 
-        _layout = _root.Q<VisualElement>("guessing-layout");
-        _sidebar = _root.Q<VisualElement>("guessing-sidebar");
+        _card = _root.Q<VisualElement>("guessing-card");
+        _iconsLayer = _root.Q<VisualElement>("guessed-icons-layer");
         _roundLabel = _root.Q<Label>("round-label");
         _timerLabel = _root.Q<Label>("guess-timer");
         _timerWarning = new UiFx.TimerWarning(_timerLabel);
@@ -133,21 +132,19 @@ public class GuessingPhaseController : MonoBehaviour
         RegisterButton(_playAgainButton, () => PlayAgainRequested?.Invoke());
         RegisterButton(_backToMenuButton, () => BackToMenuRequested?.Invoke());
 
-        // Refit the drawing whenever its free space changes (sidebar docking, screen resize),
-        // and re-aim the camera at the open stage when the layout itself changes size
+        // Refit the drawing whenever its free space changes (screen resize), and keep the
+        // guessed players on their seats as the screen changes size
         _drawingArea?.RegisterCallback<GeometryChangedEvent>(OnDrawingAreaGeometryChanged);
-        _layout?.RegisterCallback<GeometryChangedEvent>(OnLayoutGeometryChanged);
+        _iconsLayer?.RegisterCallback<GeometryChangedEvent>(OnIconsLayerGeometryChanged);
 
-        SetSidebarDocked(_isSidebarDocked);
         SetVisible(_isVisible);
     }
 
     private void OnDisable()
     {
         _drawingArea?.UnregisterCallback<GeometryChangedEvent>(OnDrawingAreaGeometryChanged);
-        _layout?.UnregisterCallback<GeometryChangedEvent>(OnLayoutGeometryChanged);
-        if (stageZoom != null)
-            stageZoom.ClearFocusRect();
+        _iconsLayer?.UnregisterCallback<GeometryChangedEvent>(OnIconsLayerGeometryChanged);
+        StopCardHideTween();
 
         UnregisterAllButtons();
         _hoveredButtons.Clear();
@@ -196,8 +193,6 @@ public class GuessingPhaseController : MonoBehaviour
                 _finishedOverlay.style.display = DisplayStyle.None;
             }
         }
-
-        UpdateStageFocus();
     }
 
     /// <summary>
@@ -216,7 +211,8 @@ public class GuessingPhaseController : MonoBehaviour
         PersistentPixelBlastBackground.EnsureExists().SetAccentColor(Color.white);
 
         SetVisible(true);
-        _sidebar?.RemoveFromClassList("is-hidden");
+        ShowCard();
+        ClearGuessedPlayers();
         _revealBanner?.AddToClassList("is-hidden");
         if (_finishedOverlay != null)
         {
@@ -295,9 +291,6 @@ public class GuessingPhaseController : MonoBehaviour
 
     public void SetGuessProgress(int guessedCount, int totalGuessers)
     {
-        // First guess in: dock the card left so the guessed cubes get the open stage
-        SetSidebarDocked(guessedCount > 0);
-
         if (_guessCountLabel != null)
             _guessCountLabel.Text = $"{guessedCount} / {Mathf.Max(1, totalGuessers)} GUESSED";
 
@@ -307,12 +300,9 @@ public class GuessingPhaseController : MonoBehaviour
         _shownGuessCount = guessedCount;
     }
 
-    /// <summary>Updates the sidebar while ColorPhysics is actively merging all guessed cubes.</summary>
+    /// <summary>Updates the card's footer once guessing is over and the guesses start merging.</summary>
     public void ShowMergingState()
     {
-        // Even with no guesses a fallback cube is spawned, so make room for it
-        SetSidebarDocked(true);
-
         if (_guessCountLabel != null)
             _guessCountLabel.Text = "MERGING GUESSES...";
     }
@@ -324,6 +314,9 @@ public class GuessingPhaseController : MonoBehaviour
     public void ShowReveal(Color mergedColor, Color targetColor, bool hasMoreDrawings)
     {
         _accentColor = targetColor;
+
+        // HideCard put it away for the merge; this reveal shows the tinted drawing on it
+        ShowCard();
 
         // Tint the black-and-white drawing with the True Hue on reveal!
         if (_drawingImage != null)
@@ -398,7 +391,9 @@ public class GuessingPhaseController : MonoBehaviour
         _isFinishedVisible = true;
         SetVisible(true);
 
-        _sidebar?.AddToClassList("is-hidden");
+        StopCardHideTween();
+        _card?.AddToClassList("is-hidden");
+        ClearGuessedPlayers();
         _revealBanner?.AddToClassList("is-hidden");
         if (_finishedOverlay != null)
         {
@@ -439,29 +434,190 @@ public class GuessingPhaseController : MonoBehaviour
         RefreshButton(_backToMenuButton);
     }
 
-    #region Drawing & Stage Layout
+    #region Guessed Players
 
     /// <summary>
-    /// Docks the card to the left (guesses are in) or lets it span the screen again. The USS
-    /// width transition animates it, and the drawing refits every frame via GeometryChangedEvent.
+    /// Pops in a player who has guessed at the next seat around the card (clockwise from the
+    /// top-left, like the join screen), in their player colour so the guess itself stays secret.
     /// </summary>
-    private void SetSidebarDocked(bool docked)
+    public void MarkPlayerGuessed(GameSessionData.SessionPlayer player)
     {
-        _isSidebarDocked = docked;
+        if (player == null || string.IsNullOrEmpty(player.playerId) || _iconsLayer == null)
+            return;
 
-        if (_sidebar != null)
-        {
-            _sidebar.style.width = docked
-                ? new StyleLength(Length.Percent(dockedSidebarPercent))
-                : new StyleLength(StyleKeyword.Null);
-        }
+        if (_guessedIcons.ContainsKey(player.playerId))
+            return;
 
-        UpdateStageFocus();
+        VisualElement icon = CreatePlayerIconElement(player);
+        _iconsLayer.Add(icon);
+        _guessedIcons[player.playerId] = icon;
+        _orderedIcons.Add(icon);
+
+        LayoutGuessedPlayers();
+        UiFx.Pop(icon, from: 0.15f);
+        GameAudioController.EnsureExists().PlayPlayerJoin();
+
+        if (PersistentPixelBlastBackground.Instance != null)
+            PersistentPixelBlastBackground.Instance.AddRipple(SeatPanelPosition(_orderedIcons.Count - 1));
     }
 
-    private void OnDrawingAreaGeometryChanged(GeometryChangedEvent evt) => FitDrawingToArea();
+    /// <summary>
+    /// Where a guessed player's cube sits in the world, on the z = <paramref name="worldZ"/>
+    /// plane, so their guess can burst out of it. False if they have no icon on screen.
+    /// </summary>
+    public bool TryGetGuessedPlayerWorldPosition(string playerId, Camera cam, float worldZ, out Vector3 worldPosition)
+    {
+        worldPosition = default;
+        if (cam == null || _root?.panel == null || string.IsNullOrEmpty(playerId))
+            return false;
 
-    private void OnLayoutGeometryChanged(GeometryChangedEvent evt) => UpdateStageFocus();
+        if (!_guessedIcons.TryGetValue(playerId, out VisualElement icon) || icon.childCount == 0)
+            return false;
+
+        Rect screen = _root.panel.visualTree.worldBound;
+        Rect cube = icon[0].worldBound; // The coloured cube (the name label sits below it)
+        if (!IsUsableRect(screen) || !IsUsableRect(cube))
+            return false;
+
+        // Panel space is y-down; viewport space has y up
+        Vector3 viewport = new(
+            (cube.center.x - screen.xMin) / screen.width,
+            1f - (cube.center.y - screen.yMin) / screen.height,
+            worldZ - cam.transform.position.z
+        );
+
+        worldPosition = cam.ViewportToWorldPoint(viewport);
+        worldPosition.z = worldZ;
+        return true;
+    }
+
+    /// <summary>Hides a guessed player's icon as their guess bursts out of it.</summary>
+    public void BurstGuessedPlayer(string playerId)
+    {
+        if (string.IsNullOrEmpty(playerId) || !_guessedIcons.TryGetValue(playerId, out VisualElement icon))
+            return;
+
+        // Hidden rather than removed, so the others keep their seats mid-burst
+        icon.style.visibility = Visibility.Hidden;
+
+        if (PersistentPixelBlastBackground.Instance != null)
+            PersistentPixelBlastBackground.Instance.AddRipple(SeatPanelPosition(_orderedIcons.IndexOf(icon)));
+    }
+
+    private void ClearGuessedPlayers()
+    {
+        foreach (VisualElement icon in _orderedIcons)
+            icon?.RemoveFromHierarchy();
+
+        _guessedIcons.Clear();
+        _orderedIcons.Clear();
+        _iconsLayer?.RemoveFromClassList(PlayerRingLayout.CrowdedClass);
+    }
+
+    private void OnIconsLayerGeometryChanged(GeometryChangedEvent evt) => LayoutGuessedPlayers();
+
+    private void LayoutGuessedPlayers()
+    {
+        if (_iconsLayer == null || _orderedIcons.Count == 0)
+            return;
+
+        _iconsLayer.EnableInClassList(PlayerRingLayout.CrowdedClass, PlayerRingLayout.IsCrowded(_orderedIcons.Count));
+
+        for (int i = 0; i < _orderedIcons.Count; i++)
+        {
+            Vector2 pos = SeatPanelPosition(i);
+            _orderedIcons[i].style.left = pos.x;
+            _orderedIcons[i].style.top = pos.y;
+        }
+    }
+
+    private Vector2 SeatPanelPosition(int seatIndex) =>
+        PlayerRingLayout.PanelPosition(_iconsLayer.contentRect, seatIndex, _orderedIcons.Count);
+
+    /// <summary>Coloured cube + optional PFP + badge, name underneath (as in the drawing phase).</summary>
+    private static VisualElement CreatePlayerIconElement(GameSessionData.SessionPlayer player)
+    {
+        VisualElement container = new() { pickingMode = PickingMode.Ignore };
+        container.AddToClassList("guessed-player-icon");
+
+        VisualElement cube = new() { pickingMode = PickingMode.Ignore };
+        cube.AddToClassList("guessed-player-icon__cube");
+        cube.style.backgroundColor = player.color;
+        SetBorderColor(cube, Color.Lerp(player.color, Color.white, 0.35f));
+
+        if (player.avatar != null)
+        {
+            VisualElement pfp = new() { pickingMode = PickingMode.Ignore };
+            pfp.AddToClassList("guessed-player-icon__pfp");
+            pfp.style.backgroundImage = new StyleBackground(player.avatar);
+            pfp.style.backgroundSize = new BackgroundSize(Length.Percent(100), Length.Percent(100));
+            cube.Add(pfp);
+        }
+
+        Label check = new("GUESSED") { pickingMode = PickingMode.Ignore };
+        check.AddToClassList("guessed-player-icon__check");
+        check.style.color = player.color;
+        SetBorderColor(check, player.color);
+        cube.Add(check);
+
+        Label nameLabel = new((player.name ?? "PLAYER").ToUpperInvariant()) { pickingMode = PickingMode.Ignore };
+        nameLabel.AddToClassList("guessed-player-icon__name");
+        nameLabel.style.color = player.color;
+        SetBorderColor(nameLabel, new Color(player.color.r, player.color.g, player.color.b, 0.75f));
+
+        container.Add(cube);
+        container.Add(nameLabel);
+        return container;
+    }
+
+    #endregion
+
+    #region Card
+
+    /// <summary>Fades and shrinks the artist's card away (the guesses are about to merge).</summary>
+    public void HideCard()
+    {
+        if (_card == null || _card.ClassListContains("is-hidden"))
+            return;
+
+        StopCardHideTween();
+        _cardHideTween = Tween.Custom(
+            target: _card,
+            startValue: 1f,
+            endValue: 0f,
+            duration: cardHideDuration,
+            onValueChange: (el, t) =>
+            {
+                el.style.opacity = t;
+                float s = Mathf.Lerp(0.85f, 1f, t);
+                el.style.scale = new Scale(new Vector3(s, s, 1f));
+            },
+            ease: Ease.InQuad
+        ).OnComplete(_card, el => el.AddToClassList("is-hidden"));
+    }
+
+    private void ShowCard()
+    {
+        StopCardHideTween();
+        if (_card == null)
+            return;
+
+        _card.RemoveFromClassList("is-hidden");
+        _card.style.opacity = StyleKeyword.Null;
+        _card.style.scale = StyleKeyword.Null;
+    }
+
+    private void StopCardHideTween()
+    {
+        if (_cardHideTween.isAlive)
+            _cardHideTween.Stop();
+    }
+
+    #endregion
+
+    #region Drawing Layout
+
+    private void OnDrawingAreaGeometryChanged(GeometryChangedEvent evt) => FitDrawingToArea();
 
     /// <summary>
     /// Sizes the bordered drawing viewport to the largest rect with the drawing's aspect ratio
@@ -493,72 +649,6 @@ public class GuessingPhaseController : MonoBehaviour
         _drawingViewport.style.height = height;
         _drawingViewport.style.left = area.x + Mathf.Round((area.width - width) * 0.5f);
         _drawingViewport.style.top = area.y + Mathf.Round((area.height - height) * 0.5f);
-    }
-
-    private AreaCameraZoom GetStageZoom()
-    {
-        if (stageZoom == null)
-            stageZoom = FindAnyObjectByType<AreaCameraZoom>();
-
-        return stageZoom;
-    }
-
-    /// <summary>
-    /// Points the camera's AreaCameraZoom at the open stage right of the docked card, so the
-    /// guessed cubes are framed in the space the drawing leaves free instead of behind it.
-    /// </summary>
-    private void UpdateStageFocus()
-    {
-        AreaCameraZoom zoom = GetStageZoom();
-        if (zoom == null)
-            return;
-
-        bool framesStage = _isVisible && !_isFinishedVisible && _isSidebarDocked;
-        if (framesStage && TryGetStageViewportRect(out Rect viewportRect))
-            zoom.SetFocusRect(viewportRect);
-        else
-            zoom.ClearFocusRect();
-    }
-
-    /// <summary>
-    /// The open stage right of the docked card, in camera viewport coordinates (0-1, y up).
-    /// Uses the docked width rather than the card's current one, so the camera heads straight
-    /// for its final framing while the card's width transition is still running.
-    /// </summary>
-    private bool TryGetStageViewportRect(out Rect viewportRect)
-    {
-        viewportRect = default;
-        if (_layout == null || _root?.panel == null)
-            return false;
-
-        Rect screen = _root.panel.visualTree.worldBound;
-        Rect layout = _layout.worldBound;
-        if (!IsUsableRect(screen) || !IsUsableRect(layout))
-            return false;
-
-        // The card's % width is relative to the layout's content box
-        IResolvedStyle layoutStyle = _layout.resolvedStyle;
-        float contentLeft = layout.xMin + layoutStyle.borderLeftWidth + layoutStyle.paddingLeft;
-        float contentWidth = layout.width
-            - layoutStyle.borderLeftWidth - layoutStyle.paddingLeft
-            - layoutStyle.paddingRight - layoutStyle.borderRightWidth;
-        float sidebarRight = contentLeft + contentWidth * dockedSidebarPercent / 100f;
-
-        float xMin = sidebarRight + stagePadding;
-        float xMax = screen.xMax - stagePadding;
-        float yMin = screen.yMin + stagePadding;
-        float yMax = screen.yMax - stagePadding;
-        if (xMax - xMin < 1f || yMax - yMin < 1f)
-            return false;
-
-        // Panel space is y-down; viewport space has y up
-        viewportRect = Rect.MinMaxRect(
-            (xMin - screen.xMin) / screen.width,
-            (screen.yMax - yMax) / screen.height,
-            (xMax - screen.xMin) / screen.width,
-            (screen.yMax - yMin) / screen.height
-        );
-        return true;
     }
 
     private static bool IsUsableRect(Rect rect) =>

@@ -2,10 +2,13 @@
     <Style src="project://database/Assets/UI/Guessing/GuessingPhase.uss"/>
     <ui:VisualElement name="guessing-root" picking-mode="Ignore" class="guessing-root">
 
-        <!-- Artist + Black & White Drawing Panel. Spans the screen until the first guess lands, then
-             docks left (width set by GuessingPhaseController) to leave the stage open for ColorPhysics cubes -->
+        <!-- Players who have guessed, seated clockwise around the card like the join screen
+             (positioned by GuessingPhaseController via PlayerRingLayout) -->
+        <ui:VisualElement name="guessed-icons-layer" picking-mode="Ignore" class="guessed-icons-layer"/>
+
+        <!-- Artist + Black & White Drawing card, centred and sized to leave room for the player ring -->
         <ui:VisualElement name="guessing-layout" picking-mode="Ignore" class="guessing-layout">
-            <ui:VisualElement name="guessing-sidebar" class="guessing-sidebar">
+            <ui:VisualElement name="guessing-card" class="guessing-card">
                 <ui:VisualElement name="sidebar-top-row" class="sidebar-top-row">
                     <ui:VisualElement name="artist-row" class="artist-row">
                         <ui:VisualElement name="artist-cube" class="artist-cube">
