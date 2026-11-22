@@ -22,7 +22,11 @@ public class MenuController : MonoBehaviour
 {
     public const int NameMaxLength = 16;
     public const int RoomCodeLength = 4;
-    public const int MaxPlayers = 12;
+    /// <summary>Seats in this game, picked on the Create Game screen (up to 12).</summary>
+    public static int MaxPlayers => GameSessionData.MaxPlayers;
+
+    /// <summary>Drawing / guessing time step on the Create Game screen.</summary>
+    private const int PhaseSecondsStep = 10;
     private const string RoomCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ";
 
     // Tailwind red-400
@@ -78,6 +82,17 @@ public class MenuController : MonoBehaviour
     private VisualElement _createCard;
     private Label _createError;
     private Button _createButton;
+
+    // Create Game settings steppers
+    private Button _maxPlayersDown;
+    private Button _maxPlayersUp;
+    private Label _maxPlayersValue;
+    private Button _drawingTimeDown;
+    private Button _drawingTimeUp;
+    private Label _drawingTimeValue;
+    private Button _guessingTimeDown;
+    private Button _guessingTimeUp;
+    private Label _guessingTimeValue;
 
     // Host Lobby view elements (lobby card + QR panel side by side, join site below)
     private VisualElement _lobbyView;
@@ -163,6 +178,16 @@ public class MenuController : MonoBehaviour
         _createError = _root.Q<Label>("error");
         _createButton = _root.Q<Button>("create-game") ?? _root.Q<Button>("join");
 
+        _maxPlayersDown = _root.Q<Button>("max-players-down");
+        _maxPlayersUp = _root.Q<Button>("max-players-up");
+        _maxPlayersValue = _root.Q<Label>("max-players-value");
+        _drawingTimeDown = _root.Q<Button>("drawing-time-down");
+        _drawingTimeUp = _root.Q<Button>("drawing-time-up");
+        _drawingTimeValue = _root.Q<Label>("drawing-time-value");
+        _guessingTimeDown = _root.Q<Button>("guessing-time-down");
+        _guessingTimeUp = _root.Q<Button>("guessing-time-up");
+        _guessingTimeValue = _root.Q<Label>("guessing-time-value");
+
         _lobbyView = _root.Q<VisualElement>("lobby-view");
         _roomCodeDisplay = _root.Q<Label>("room-code-display");
         _lobbyTitle = _root.Q<Label>("lobby-title");
@@ -184,6 +209,7 @@ public class MenuController : MonoBehaviour
         RegisterButton(_createButton, CreateGame);
         RegisterButton(_backButton, CloseLobby);
         RegisterButton(_startMatchButton, StartMatch);
+        RegisterSettingButtons(register: true);
 
         _root.RegisterCallback<KeyDownEvent>(OnRootKeyDown);
 
@@ -202,6 +228,7 @@ public class MenuController : MonoBehaviour
         ApplyHue(_hueBar != null ? _hueBar.Color : Color.white);
 
         BindRelay();
+        RefreshSettingsUI();
     }
 
     // The Relay object may wake after this one, so try again once every Awake has run
@@ -217,6 +244,7 @@ public class MenuController : MonoBehaviour
         UnregisterButton(_createButton, CreateGame);
         UnregisterButton(_backButton, CloseLobby);
         UnregisterButton(_startMatchButton, StartMatch);
+        RegisterSettingButtons(register: false);
 
         _root?.UnregisterCallback<KeyDownEvent>(OnRootKeyDown);
 
@@ -435,6 +463,125 @@ public class MenuController : MonoBehaviour
         }
     }
 
+    #endregion
+
+    #region Match Settings (Create Game screen)
+
+    private void RegisterSettingButtons(bool register)
+    {
+        (Button button, Action onClick)[] steppers =
+        {
+            (_maxPlayersDown, DecreaseMaxPlayers),
+            (_maxPlayersUp, IncreaseMaxPlayers),
+            (_drawingTimeDown, DecreaseDrawingTime),
+            (_drawingTimeUp, IncreaseDrawingTime),
+            (_guessingTimeDown, DecreaseGuessingTime),
+            (_guessingTimeUp, IncreaseGuessingTime),
+        };
+
+        foreach ((Button button, Action onClick) in steppers)
+        {
+            if (register)
+                RegisterButton(button, onClick);
+            else
+                UnregisterButton(button, onClick);
+        }
+    }
+
+    private void DecreaseMaxPlayers() => SetMaxPlayers(GameSessionData.MaxPlayers - 1);
+    private void IncreaseMaxPlayers() => SetMaxPlayers(GameSessionData.MaxPlayers + 1);
+
+    private void DecreaseDrawingTime() =>
+        SetDrawingSeconds(GameSessionData.DrawingSeconds - PhaseSecondsStep);
+
+    private void IncreaseDrawingTime() =>
+        SetDrawingSeconds(GameSessionData.DrawingSeconds + PhaseSecondsStep);
+
+    private void DecreaseGuessingTime() =>
+        SetGuessingSeconds(GameSessionData.GuessingSeconds - PhaseSecondsStep);
+
+    private void IncreaseGuessingTime() =>
+        SetGuessingSeconds(GameSessionData.GuessingSeconds + PhaseSecondsStep);
+
+    /// <summary>
+    /// Sets how many players can join (never below the players already in the relay room,
+    /// since lowering the limit doesn't remove anyone) and tells the relay.
+    /// </summary>
+    public void SetMaxPlayers(int maxPlayers)
+    {
+        GameSessionData.MaxPlayers = Mathf.Max(maxPlayers, MinSelectableMaxPlayers());
+        ApplyMaxPlayersToRelay();
+        RefreshSettingsUI();
+        RefreshLobbyUI();
+    }
+
+    public void SetDrawingSeconds(int seconds)
+    {
+        GameSessionData.DrawingSeconds = seconds;
+        RefreshSettingsUI();
+    }
+
+    public void SetGuessingSeconds(int seconds)
+    {
+        GameSessionData.GuessingSeconds = seconds;
+        RefreshSettingsUI();
+    }
+
+    /// <summary>The limit can't go below the minimum to start, or below who's already seated.</summary>
+    private int MinSelectableMaxPlayers()
+    {
+        int seated = _relay != null ? _relay.Players.Count : _players.Count;
+        return Mathf.Clamp(seated, GameSessionData.MinPlayersToStart, GameSessionData.MaxPlayersLimit);
+    }
+
+    private void ApplyMaxPlayersToRelay()
+    {
+        if (_relay != null)
+            _relay.MaxPlayers = GameSessionData.MaxPlayers;
+    }
+
+    private void RefreshSettingsUI()
+    {
+        // Players may have joined the (kept) relay room since the limit was picked
+        if (GameSessionData.MaxPlayers < MinSelectableMaxPlayers())
+        {
+            GameSessionData.MaxPlayers = MinSelectableMaxPlayers();
+            ApplyMaxPlayersToRelay();
+        }
+
+        int maxPlayers = GameSessionData.MaxPlayers;
+        int drawing = GameSessionData.DrawingSeconds;
+        int guessing = GameSessionData.GuessingSeconds;
+
+        if (_maxPlayersValue != null)
+            _maxPlayersValue.text = maxPlayers.ToString();
+        if (_drawingTimeValue != null)
+            _drawingTimeValue.text = $"{drawing}s";
+        if (_guessingTimeValue != null)
+            _guessingTimeValue.text = $"{guessing}s";
+
+        SetStepperEnabled(_maxPlayersDown, maxPlayers > MinSelectableMaxPlayers());
+        SetStepperEnabled(_maxPlayersUp, maxPlayers < GameSessionData.MaxPlayersLimit);
+        SetStepperEnabled(_drawingTimeDown, drawing > GameSessionData.MinPhaseSeconds);
+        SetStepperEnabled(_drawingTimeUp, drawing < GameSessionData.MaxPhaseSeconds);
+        SetStepperEnabled(_guessingTimeDown, guessing > GameSessionData.MinPhaseSeconds);
+        SetStepperEnabled(_guessingTimeUp, guessing < GameSessionData.MaxPhaseSeconds);
+    }
+
+    private void SetStepperEnabled(Button button, bool enabled)
+    {
+        if (button == null)
+            return;
+
+        button.SetEnabled(enabled);
+        button.style.opacity = enabled ? 1f : 0.35f;
+        RefreshButton(button);
+    }
+
+    #endregion
+
+    #region View
+
     private void SetView(bool inLobby)
     {
         _inLobby = inLobby;
@@ -445,6 +592,10 @@ public class MenuController : MonoBehaviour
 
         if (_title != null)
             _title.OverlapAnimate = inLobby;
+
+        // Back on the Create Game card: the room may have gained players meanwhile
+        if (!inLobby)
+            RefreshSettingsUI();
     }
 
     #endregion
@@ -460,6 +611,8 @@ public class MenuController : MonoBehaviour
 
         if (_relay == null)
             return;
+
+        ApplyMaxPlayersToRelay();
 
         // Prefer the PlayerAvatars next to the live RelayClient: when the menu reloads,
         // the scene's own copy of the Relay object is a duplicate being destroyed
@@ -529,6 +682,16 @@ public class MenuController : MonoBehaviour
 
     private void AddRelayPlayer(RelayPlayer player)
     {
+        // The relay refuses joins over the limit itself; this only matters if it's an older
+        // relay that doesn't know set_max_players
+        bool isNew = _players.FindIndex(p => p.playerId == player.Id) < 0;
+        if (isNew && _players.Count >= MaxPlayers)
+        {
+            Debug.LogWarning($"[Menu] Lobby full ({MaxPlayers}); removing {player.Name}.");
+            _relay?.Kick(player.Id);
+            return;
+        }
+
         Texture2D avatar = null;
         if (_avatars != null && _avatars.TryGetAvatar(player.Id, out Sprite sprite) && sprite != null)
             avatar = sprite.texture;
@@ -1224,6 +1387,12 @@ public class MenuController : MonoBehaviour
         RefreshButton(_createButton);
         RefreshButton(_backButton);
         RefreshButton(_startMatchButton);
+        RefreshButton(_maxPlayersDown);
+        RefreshButton(_maxPlayersUp);
+        RefreshButton(_drawingTimeDown);
+        RefreshButton(_drawingTimeUp);
+        RefreshButton(_guessingTimeDown);
+        RefreshButton(_guessingTimeUp);
     }
 
     private void RefreshButton(Button button)

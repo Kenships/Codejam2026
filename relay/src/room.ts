@@ -38,6 +38,8 @@ export class Room {
     private closed = false;
     /** The host's retained room-wide message, replayed to every join and rejoin. */
     private retained: Retained | null = null;
+    /** Seats handed out at most; the host can lower it (set_max_players). */
+    private maxPlayers = MAX_PLAYERS;
 
     constructor(code : string, hostKey : string, host : Conn | null) {
         this.code = code;
@@ -51,7 +53,7 @@ export class Room {
 
     addPlayer(name : string, conn : Conn) : AddPlayerResult {
         const trimmed = name.trim();
-        if (this.seats.size >= MAX_PLAYERS) {
+        if (this.seats.size >= this.maxPlayers) {
             return { ok: false, code: "room_full"}
         }
         if (trimmed.length <= 0 || trimmed.length > NAME_MAX_LENGTH) {
@@ -100,6 +102,15 @@ export class Room {
         }
 
         return deletedSeat;
+    }
+
+    /** Clamped to 1..MAX_PLAYERS. Existing seats are kept even if there are now too many. */
+    setMaxPlayers(n : number) {
+        this.maxPlayers = Math.min(MAX_PLAYERS, Math.max(1, Math.floor(n)));
+    }
+
+    getMaxPlayers() {
+        return this.maxPlayers;
     }
 
     getSeat(playerId : string) {

@@ -32,15 +32,17 @@ public class GameManager : Singleton<GameManager>
     [Tooltip("Starts the Drawing Phase immediately when GameScene begins.")]
     [SerializeField] private bool startDrawingOnStart = true;
 
-    [Tooltip("Seconds players have to draw and submit (matches DrawingCanvasCard default of 60s).")]
+    [Tooltip("Seconds players have to draw and submit. Replaced by the Create Game screen's setting " +
+             "when the match was started from the menu.")]
     [SerializeField, Min(5f)] private float drawingDurationSeconds = 60f;
 
     [Tooltip("Extra seconds the drawing phase stays open after the timer, for phones still uploading. " +
-             "Each phone runs its own 60 s timer that starts when the drawing phase reaches it, so its " +
+             "Each phone runs its own timer that starts when the drawing phase reaches it, so its " +
              "auto-submit lands a little after ours. Ends early once everyone has submitted.")]
     [SerializeField, Min(0f)] private float lateSubmitGraceSeconds = 5f;
 
-    [Tooltip("Seconds players have to guess each drawing's hue.")]
+    [Tooltip("Seconds players have to guess each drawing's hue. Replaced by the Create Game screen's " +
+             "setting when the match was started from the menu.")]
     [SerializeField, Min(5f)] private float guessingDurationSeconds = 30f;
 
     [Tooltip("Phases stop waiting for a phone this many seconds after it disconnects (it can still " +
@@ -114,15 +116,6 @@ public class GameManager : Singleton<GameManager>
     public int CurrentRound => _currentRound;
     public bool IsRunning => _sequenceRoutine != null;
 
-    private static readonly string[] SamplePrompts =
-    {
-        "Golden hour sunset",
-        "Midnight mountain peaks",
-        "Fresh spring blossom",
-        "Cozy autumn cabin",
-        "Electric ocean wave",
-        "Neon city glow"
-    };
 
     private void OnEnable()
     {
@@ -137,6 +130,13 @@ public class GameManager : Singleton<GameManager>
 
     private void Start()
     {
+        // Timers picked on the Create Game screen
+        if (GameSessionData.HasMatchSettings)
+        {
+            drawingDurationSeconds = GameSessionData.DrawingSeconds;
+            guessingDurationSeconds = GameSessionData.GuessingSeconds;
+        }
+
         EnsurePhaseUIs();
         BindUIEvents(subscribe: true);
         BindRelayEvents(subscribe: true);
@@ -212,30 +212,6 @@ public class GameManager : Singleton<GameManager>
         _phaseRoutine = StartCoroutine(DrawingTimerRoutine());
     }
 
-    /// <summary>Simulates the next unsubmitted player submitting their drawing.</summary>
-    [Button]
-    public void SimulateNextPlayerSubmit()
-    {
-        if (!Application.isPlaying || _currentPhase != GamePhase.Drawing)
-            return;
-
-        for (int i = 0; i < GameSessionData.Players.Count; i++)
-        {
-            GameSessionData.SessionPlayer p = GameSessionData.Players[i];
-            if (!_submittedDrawingPlayerIds.Contains(p.playerId))
-            {
-                OnPlayerDrawingSubmitted(
-                    p.playerId,
-                    SamplePrompts[i % SamplePrompts.Length],
-                    drawingTexture: null,
-                    imageBase64: "",
-                    mime: "image/png"
-                );
-                return;
-            }
-        }
-    }
-
     /// <summary>Ends the Drawing Phase and begins the guessing loop across all submitted drawings.</summary>
     [Button]
     public void CompleteDrawingPhase()
@@ -251,6 +227,19 @@ public class GameManager : Singleton<GameManager>
 
         _currentDrawingIndex = 0;
         BeginArtistRevealForCurrentDrawing();
+    }
+
+    /// <summary>
+    /// Host pressed CONTINUE on the Drawing UI. Ignored until at least one drawing is in,
+    /// so the round can't be skipped while players are still preparing their drawings.
+    /// (The timer still ends the phase on its own, even with no submissions.)
+    /// </summary>
+    private void HandleDrawingContinueRequested()
+    {
+        if (GameSessionData.Drawings.Count == 0)
+            return;
+
+        CompleteDrawingPhase();
     }
 
     private IEnumerator DrawingTimerRoutine()
@@ -959,14 +948,10 @@ public class GameManager : Singleton<GameManager>
     {
         if (drawingPhaseUI != null)
         {
-            drawingPhaseUI.SimulateSubmitRequested -= SimulateNextPlayerSubmit;
-            drawingPhaseUI.ContinueRequested -= CompleteDrawingPhase;
+            drawingPhaseUI.ContinueRequested -= HandleDrawingContinueRequested;
 
             if (subscribe)
-            {
-                drawingPhaseUI.SimulateSubmitRequested += SimulateNextPlayerSubmit;
-                drawingPhaseUI.ContinueRequested += CompleteDrawingPhase;
-            }
+                drawingPhaseUI.ContinueRequested += HandleDrawingContinueRequested;
         }
 
         if (_revealUI != null)

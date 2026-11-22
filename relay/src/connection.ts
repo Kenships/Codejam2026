@@ -169,6 +169,13 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
         log.info("player kicked", { ...who(), player: seat.playerId, name: seat.name });
     }
 
+    function setMaxPlayers(msg: MsgOf<"set_max_players">) {
+        if (identity.kind === "none") return fail("not_in_room");
+        if (identity.kind !== "host") return fail("forbidden");
+        identity.room.setMaxPlayers(msg.maxPlayers);
+        log.info("max players set", { ...who(), maxPlayers: identity.room.getMaxPlayers() });
+    }
+
     function leave() {
         if (identity.kind === "none") return fail("not_in_room");
         if (identity.kind !== "player") return fail("forbidden");
@@ -242,6 +249,9 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
                     break;
                 case "leave":
                     leave();
+                    break;
+                case "set_max_players":
+                    setMaxPlayers(msg);
                     break;
             }
         } catch (err) {

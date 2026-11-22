@@ -146,7 +146,8 @@ export function formatProtocolError(code: ErrorCode, fallback?: string): string 
     case 'room_not_found':
       return 'Room not found. Check the code and try again.'
     case 'room_full':
-      return `Room is full (max ${MAX_PLAYERS} players).`
+      // The host can set a lower limit than MAX_PLAYERS
+      return 'This room is full.'
     case 'name_invalid':
       return `Username must be 1–${NAME_MAX_LENGTH} characters.`
     case 'name_taken':

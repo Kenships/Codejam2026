@@ -265,7 +265,7 @@ export function DrawingCanvasCard({
     })
   }, [flushStrokeBatch])
 
-  // Countdown timer driven by host remainingMs (minus ageMs) or fallback durationSec; auto-submits at 0
+  // Countdown timer (durationSec, set by the host); auto-submits when time expires
   useEffect(() => {
     if (submitted) return
 

@@ -238,6 +238,21 @@ describe("host-only actions", () => {
         host.send({ t: "kick", playerId: "nobody" });
         assert.equal((await host.expect("error")).code, "unknown_target");
     });
+
+    test("set_max_players from a player -> forbidden", async () => {
+        const { players } = await setupRoom(["A"]);
+        players[0]!.client.send({ t: "set_max_players", maxPlayers: 2 });
+        assert.equal((await players[0]!.client.expect("error")).code, "forbidden");
+    });
+
+    test("set_max_players: no reply, and the next join over the limit gets room_full", async () => {
+        const { host, room } = await setupRoom(["A"]);
+        host.send({ t: "set_max_players", maxPlayers: 1 });
+        await host.expectSilence();
+        const late = await connect(relay.port);
+        late.send({ t: "join", room, name: "B" });
+        assert.equal((await late.expect("error")).code, "room_full");
+    });
 });
 
 describe("player disconnect / rejoin", () => {

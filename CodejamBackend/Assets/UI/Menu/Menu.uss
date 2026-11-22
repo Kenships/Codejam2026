@@ -256,6 +256,59 @@
     text-shadow: 0 0 8px rgb(0, 0, 0);
 }
 
+/* ---- Create Game Settings (LABEL  [-] value [+]) ---- */
+
+.menu-root .game-settings {
+    width: 100%;
+    max-width: 440px;
+    margin-bottom: 24px;
+}
+
+.menu-root .setting-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.menu-root .setting-label {
+    font-size: 22px;
+    letter-spacing: 1.8px;
+    -unity-text-align: middle-left;
+    text-shadow: 0 0 8px rgb(0, 0, 0);
+}
+
+.menu-root .setting-stepper {
+    flex-direction: row;
+    align-items: center;
+}
+
+.menu-root .setting-value {
+    width: 76px;
+    font-size: 26px;
+    -unity-font-style: bold;
+    letter-spacing: 1.2px;
+    -unity-text-align: middle-center;
+    text-shadow: 0 0 8px rgb(0, 0, 0);
+}
+
+/* Colours come from MenuController.RefreshButton (hue border/text, filled on hover) */
+.menu-root .setting-step.unity-button {
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: rgb(255, 255, 255);
+    background-color: rgba(0, 0, 0, 0.45);
+    color: rgb(255, 255, 255);
+    font-size: 26px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    -unity-font-definition: url("project://database/Assets/UI/Fonts/Jersey25-Regular.ttf");
+}
+
 /* ---- Buttons ---- */
 
 .menu-root .card-footer {

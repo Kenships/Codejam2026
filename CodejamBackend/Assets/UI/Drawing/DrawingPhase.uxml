@@ -31,7 +31,6 @@
                 <ui:Label name="drawing-description" text="Draw a clue on your phone and submit before time runs out" class="drawing-card-description rainbow-dim-text"/>
 
                 <ui:VisualElement name="drawing-test-row" class="drawing-test-row">
-                    <ui:Button name="simulate-submit" text="+ SIMULATE SUBMIT" class="drawing-button"/>
                     <ui:Button name="next-phase" text="CONTINUE" class="drawing-button drawing-button--primary"/>
                 </ui:VisualElement>
             </ui:VisualElement>

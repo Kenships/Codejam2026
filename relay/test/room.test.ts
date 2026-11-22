@@ -51,6 +51,31 @@ describe("Room.addPlayer", () => {
         room.markDisconnected(first.playerId, first.conn!);
         assert.deepEqual(room.addPlayer("late", fakeConn()), { ok: false, code: "room_full" });
     });
+
+    test("setMaxPlayers lowers the limit", () => {
+        const room = newRoom();
+        room.setMaxPlayers(3);
+        for (let i = 0; i < 3; i++) join(room, `p${i}`);
+        assert.deepEqual(room.addPlayer("late", fakeConn()), { ok: false, code: "room_full" });
+    });
+
+    test("setMaxPlayers below the seat count keeps everyone but blocks new joins", () => {
+        const room = newRoom();
+        const seats = Array.from({ length: 4 }, (_, i) => join(room, `p${i}`));
+        room.setMaxPlayers(2);
+        assert.equal(room.playerList().length, 4);
+        assert.deepEqual(room.addPlayer("late", fakeConn()), { ok: false, code: "room_full" });
+        // An existing seat can still be reclaimed
+        assert.ok(room.rejoin(seats[0]!.playerId, fakeConn()));
+    });
+
+    test("setMaxPlayers is clamped to 1..MAX_PLAYERS", () => {
+        const room = newRoom();
+        room.setMaxPlayers(99);
+        assert.equal(room.getMaxPlayers(), MAX_PLAYERS);
+        room.setMaxPlayers(0);
+        assert.equal(room.getMaxPlayers(), 1);
+    });
 });
 
 describe("Room.rejoin / markDisconnected", () => {

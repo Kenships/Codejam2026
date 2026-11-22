@@ -14,6 +14,33 @@
                 <ui:Label name="card-title" text="CREATE A GAME" class="card-title hue-text"/>
                 <ui:Label name="card-description" text="Open a game lobby on this screen for players to join with a 4-letter room code" class="card-description hue-dim-text"/>
                 <ui:VisualElement name="card-content" class="card-content">
+                    <!-- Match settings: each row is LABEL  [-] value [+] -->
+                    <ui:VisualElement name="game-settings" class="game-settings">
+                        <ui:VisualElement class="setting-row">
+                            <ui:Label text="MAX PLAYERS" class="setting-label hue-dim-text"/>
+                            <ui:VisualElement class="setting-stepper">
+                                <ui:Button name="max-players-down" text="-" class="setting-step"/>
+                                <ui:Label name="max-players-value" text="12" class="setting-value hue-text"/>
+                                <ui:Button name="max-players-up" text="+" class="setting-step"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement class="setting-row">
+                            <ui:Label text="DRAWING TIME" class="setting-label hue-dim-text"/>
+                            <ui:VisualElement class="setting-stepper">
+                                <ui:Button name="drawing-time-down" text="-" class="setting-step"/>
+                                <ui:Label name="drawing-time-value" text="60s" class="setting-value hue-text"/>
+                                <ui:Button name="drawing-time-up" text="+" class="setting-step"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement class="setting-row">
+                            <ui:Label text="GUESSING TIME" class="setting-label hue-dim-text"/>
+                            <ui:VisualElement class="setting-stepper">
+                                <ui:Button name="guessing-time-down" text="-" class="setting-step"/>
+                                <ui:Label name="guessing-time-value" text="30s" class="setting-value hue-text"/>
+                                <ui:Button name="guessing-time-up" text="+" class="setting-step"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Label name="error" class="card-error"/>
                 </ui:VisualElement>
                 <ui:VisualElement name="card-footer" class="card-footer">

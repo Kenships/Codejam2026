@@ -67,8 +67,29 @@ namespace Codejam.Networking
         private int _reconnectAttempt;
         private Coroutine _reconnectRoutine;
         private Coroutine _keepAliveRoutine;
+        private int _maxPlayers = RelayMaxPlayers;
+
+        /// <summary>The relay's own hard limit on players per room.</summary>
+        public const int RelayMaxPlayers = 12;
 
         // ---- public state ----
+
+        /// <summary>
+        /// Most players the room lets in (1..12); later joins are refused with room_full.
+        /// Sent right away when in a room, and again every time a room is created or resumed.
+        /// Lowering it never removes anyone already seated.
+        /// </summary>
+        public int MaxPlayers
+        {
+            get => _maxPlayers;
+            set
+            {
+                int clamped = Mathf.Clamp(value, 1, RelayMaxPlayers);
+                if (clamped == _maxPlayers) return;
+                _maxPlayers = clamped;
+                if (Status == RelayStatus.InRoom) SendMaxPlayers();
+            }
+        }
 
         public RelayStatus Status { get; private set; } = RelayStatus.Disconnected;
 
@@ -226,6 +247,9 @@ namespace Codejam.Networking
         /// <summary>Remove a player. Their phone is disconnected with close code 4000.</summary>
         public bool Kick(string playerId) =>
             SendEnvelope(new JObject { ["t"] = "kick", ["playerId"] = playerId });
+
+        private bool SendMaxPlayers() =>
+            SendEnvelope(new JObject { ["t"] = "set_max_players", ["maxPlayers"] = _maxPlayers });
 
         private bool SendGame(string to, object d)
         {
@@ -399,6 +423,8 @@ namespace Codejam.Networking
 
             Debug.Log($"[Relay] Room {code} ready. Join link: {JoinUrl}");
             SetStatus(RelayStatus.InRoom);
+            // A new room starts at the relay's limit, and a resumed one keeps what it had: apply ours
+            SendMaxPlayers();
             StartKeepAlive();
             Raise(RoomReady, code);
         }

@@ -12,6 +12,46 @@ public static class GameSessionData
     /// <summary>A game needs at least this many connected players (lobby Start Match and Play Again).</summary>
     public const int MinPlayersToStart = 2;
 
+    /// <summary>Most players a room can hold (the relay's own hard limit).</summary>
+    public const int MaxPlayersLimit = 12;
+
+    /// <summary>Range for the drawing and guessing timers picked on the Create Game screen.</summary>
+    public const int MinPhaseSeconds = 30;
+    public const int MaxPhaseSeconds = 120;
+
+    // ---- Match settings (picked on the Create Game screen; kept for Play Again and the next lobby) ----
+
+    private static int _maxPlayers = MaxPlayersLimit;
+    private static int _drawingSeconds = 60;
+    private static int _guessingSeconds = 30;
+
+    /// <summary>Seats the room hands out (MinPlayersToStart..MaxPlayersLimit).</summary>
+    public static int MaxPlayers
+    {
+        get => _maxPlayers;
+        set => _maxPlayers = Mathf.Clamp(value, MinPlayersToStart, MaxPlayersLimit);
+    }
+
+    /// <summary>Seconds players have to draw (MinPhaseSeconds..MaxPhaseSeconds).</summary>
+    public static int DrawingSeconds
+    {
+        get => _drawingSeconds;
+        set => _drawingSeconds = Mathf.Clamp(value, MinPhaseSeconds, MaxPhaseSeconds);
+    }
+
+    /// <summary>Seconds players have to guess each drawing (MinPhaseSeconds..MaxPhaseSeconds).</summary>
+    public static int GuessingSeconds
+    {
+        get => _guessingSeconds;
+        set => _guessingSeconds = Mathf.Clamp(value, MinPhaseSeconds, MaxPhaseSeconds);
+    }
+
+    /// <summary>
+    /// True once a match was started from the menu. GameScene then uses the timers above
+    /// instead of GameManager's inspector values (which still apply when it's played on its own).
+    /// </summary>
+    public static bool HasMatchSettings { get; private set; }
+
     [Serializable]
     public class SessionPlayer
     {
@@ -50,6 +90,7 @@ public static class GameSessionData
     public static void SetLobbySession(string roomCode, IReadOnlyList<MenuController.LobbyPlayer> lobbyPlayers)
     {
         RoomCode = roomCode ?? "";
+        HasMatchSettings = true;
         Players.Clear();
         Drawings.Clear();
 

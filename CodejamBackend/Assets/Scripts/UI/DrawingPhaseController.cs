@@ -12,7 +12,7 @@ using UnityEngine.UIElements;
 /// - Runs the frontend's loading rainbow colour shift (24 deg/s HSV cycle) across TrueHueTitle,
 ///   PixelBlastBackground, card borders, and timer.
 /// - Displays the drawing countdown timer and submission count.
-/// - Whenever a player submits their drawing (via relay or simulation), pops in that player's
+/// - Whenever a player submits their drawing (via relay), pops in that player's
 ///   icon (coloured cube + optional PFP + name underneath) around the center card in the same
 ///   top-left clockwise circle as the join screen.
 /// </summary>
@@ -31,7 +31,6 @@ public class DrawingPhaseController : MonoBehaviour
     [Title("Testing")]
     [SerializeField] private bool showSimulateControls = true;
 
-    public event Action SimulateSubmitRequested;
     public event Action ContinueRequested;
 
     private VisualElement _root;
@@ -47,7 +46,6 @@ public class DrawingPhaseController : MonoBehaviour
     private Label _timerValue;
     private Label _description;
     private VisualElement _testRow;
-    private Button _simulateSubmitButton;
     private Button _continueButton;
 
     // Artist spotlight elements (shown after all player icons merge into the artist)
@@ -112,7 +110,6 @@ public class DrawingPhaseController : MonoBehaviour
         _timerValue = _root.Q<Label>("drawing-timer");
         _description = _root.Q<Label>("drawing-description");
         _testRow = _root.Q<VisualElement>("drawing-test-row");
-        _simulateSubmitButton = _root.Q<Button>("simulate-submit");
         _continueButton = _root.Q<Button>("next-phase");
 
         _artistSpotlight = _root.Q<VisualElement>("artist-spotlight");
@@ -127,7 +124,6 @@ public class DrawingPhaseController : MonoBehaviour
         if (_title != null)
             _title.OverlapAnimate = true;
 
-        RegisterButton(_simulateSubmitButton, OnSimulateSubmitClicked);
         RegisterButton(_continueButton, OnContinueClicked);
 
         ApplyRainbowColor(Color.HSVToRGB(0f, 1f, 1f));
@@ -136,7 +132,6 @@ public class DrawingPhaseController : MonoBehaviour
 
     private void OnDisable()
     {
-        UnregisterButton(_simulateSubmitButton, OnSimulateSubmitClicked);
         UnregisterButton(_continueButton, OnContinueClicked);
         _hoveredButtons.Clear();
         _focusedButtons.Clear();
@@ -569,10 +564,14 @@ public class DrawingPhaseController : MonoBehaviour
                 : "Draw a clue on your phone and submit before time runs out";
         }
 
-        if (_simulateSubmitButton != null)
+        // No skipping ahead while players are still preparing their drawings:
+        // with nothing submitted there would be nothing to guess.
+        if (_continueButton != null)
         {
-            _simulateSubmitButton.SetEnabled(!allDone);
-            _simulateSubmitButton.style.opacity = allDone ? 0.45f : 1f;
+            bool canContinue = submitted > 0;
+            _continueButton.SetEnabled(canContinue);
+            _continueButton.style.opacity = canContinue ? 1f : 0.45f;
+            RefreshButton(_continueButton);
         }
     }
 
@@ -593,20 +592,16 @@ public class DrawingPhaseController : MonoBehaviour
         if (_title != null)
             _title.BaseColor = rainbow;
 
-        RefreshButton(_simulateSubmitButton);
         RefreshButton(_continueButton);
     }
 
     #region Buttons
 
-    private void OnSimulateSubmitClicked()
-    {
-        GameAudioController.EnsureExists().PlayButtonClick();
-        SimulateSubmitRequested?.Invoke();
-    }
-
     private void OnContinueClicked()
     {
+        if (_submittedIcons.Count == 0)
+            return;
+
         GameAudioController.EnsureExists().PlayButtonClick();
         ContinueRequested?.Invoke();
     }

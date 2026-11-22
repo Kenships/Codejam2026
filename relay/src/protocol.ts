@@ -70,6 +70,15 @@ export type Leave = {
     t: "leave";
 }
 
+/**
+ * Host only. Caps how many seats the room hands out (1..MAX_PLAYERS); further joins get room_full.
+ * Never removes anyone: lowering it below the current seat count only stops new joins.
+ */
+export type SetMaxPlayers = {
+    t: "set_max_players";
+    maxPlayers: number;
+}
+
 export type ClientMessage = (
     | HostCreate
     | HostResume
@@ -78,6 +87,7 @@ export type ClientMessage = (
     | GrantBroadcast
     | Kick
     | Leave
+    | SetMaxPlayers
 )
 
 
@@ -280,6 +290,14 @@ export function parseClientMessage(raw: string): ParseResult {
 
         case "leave":
             return { ok: true, msg: { t: "leave" } };
+
+        case "set_max_players": {
+            const { maxPlayers } = parsed;
+            if (typeof maxPlayers !== "number" || !Number.isInteger(maxPlayers) || maxPlayers < 1 || maxPlayers > MAX_PLAYERS) {
+                return bad(`set_max_players.maxPlayers must be an integer from 1 to ${MAX_PLAYERS}`);
+            }
+            return { ok: true, msg: { t: "set_max_players", maxPlayers } };
+        }
 
         default:
             return bad("Unknown message type");

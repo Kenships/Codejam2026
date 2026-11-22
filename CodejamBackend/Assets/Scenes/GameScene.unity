@@ -186,10 +186,10 @@ MonoBehaviour:
   mergeSpawnOvershoot: 1
   spawnDistance: 5
   spawnInterval: 0.15
-  squashAllInterval: 0.25
+  squashAllInterval: 0.01
   squashAllGracePeriod: 2.5
   cubeSprite: {fileID: 0}
-  cubeCollapseDuration: 0.6
+  cubeCollapseDuration: 0.25
   cubeCollapseCohesion: 0.25
   cubeCenteringMultiplier: 4
   cubePopStartScale: 0.2
@@ -258,7 +258,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82d317a8484be6345b31eec44cce09e9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
-  dontDestroyOnLoad: 1
+  dontDestroyOnLoad: 0
   colorPhysics: {fileID: 413268374}
   revealController: {fileID: 497188568}
   drawingPhaseUI: {fileID: 1700000003}
@@ -268,6 +268,7 @@ MonoBehaviour:
   drawingDurationSeconds: 60
   lateSubmitGraceSeconds: 5
   guessingDurationSeconds: 30
+  disconnectedWaitSeconds: 3
   allSubmittedAdvanceDelay: 1.5
   revealDurationSeconds: 6
   leaderboardDurationSeconds: 8
@@ -277,8 +278,8 @@ MonoBehaviour:
   saturation: 1
   value: 1
   totalArea: 30
-  minUnitArea: 0.6
-  maxUnitArea: 1.5
+  minUnitArea: 1
+  maxUnitArea: 3
   mergeDelay: 2
   useSeed: 0
   seed: 0

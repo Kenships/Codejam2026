@@ -304,6 +304,11 @@ export function PlayPage() {
             setGuessHue(null)
           }
         }
+        if (d.phase === 'drawing' && typeof d.remainingMs === 'number') {
+          // A catch-up replay is ageMs old; never start below 1 s
+          const remainingMs = d.remainingMs - (ageMs ?? 0)
+          setDrawingDurationSec(Math.max(1, Math.round(remainingMs / 1000)))
+        }
         setGamePhase(d.phase)
       }
     })
