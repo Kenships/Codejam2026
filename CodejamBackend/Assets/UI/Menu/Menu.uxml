@@ -20,7 +20,7 @@
                             <ui:Label text="MAX PLAYERS" class="setting-label hue-dim-text"/>
                             <ui:VisualElement class="setting-stepper">
                                 <ui:Button name="max-players-down" text="-" class="setting-step"/>
-                                <ui:Label name="max-players-value" text="12" class="setting-value hue-text"/>
+                                <ui:Label name="max-players-value" text="32" class="setting-value hue-text"/>
                                 <ui:Button name="max-players-up" text="+" class="setting-step"/>
                             </ui:VisualElement>
                         </ui:VisualElement>

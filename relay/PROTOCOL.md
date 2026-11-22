@@ -23,9 +23,9 @@ inspects the game payload `d`.
 | Max frame size | 64 KB. Larger frames close the socket with code `1009`. |
 | Ordering | Messages from one sender arrive in the order they were sent. No ordering is guaranteed *between* different senders. |
 | Heartbeat | Relay sends a WebSocket `ping` every 25 s. Browsers and NativeWebSocket answer automatically — clients do nothing. A socket that misses a pong is terminated. |
-| Rate limit | Per socket: bursts of up to 40 messages, refilling at 40/second. Over the limit, messages are dropped. The sender gets **one** `error: rate_limited` when it first goes over, then further drops are silent until it slows down. Every frame counts, including invalid ones. |
+| Rate limit | Per socket: bursts of up to 100 messages, refilling at 40/second. Over the limit, messages are dropped. The sender gets **one** `error: rate_limited` when it first goes over, then further drops are silent until it slows down. Every frame counts, including invalid ones. |
 | Origin | Browser connections must come from an allowed origin (`ALLOWED_ORIGINS`), otherwise the socket is closed with `1008 "origin not allowed"`. Clients that send no `Origin` header (Unity) are always allowed. |
-| Room size | 1 host + max **12 players** (the host can lower this with `set_max_players`). Disconnected players still hold a seat (and count) until their grace period ends. |
+| Room size | 1 host + max **32 players** (the host can lower this with `set_max_players`). Disconnected players still hold a seat (and count) until their grace period ends. |
 | HTTP | `GET /healthz` → `200 {"ok":true,"uptime":<seconds>}`. Everything else is `404`. |
 
 Every message, in both directions, has a string field **`t`** (type). Read `t` first, then the
@@ -59,7 +59,7 @@ trying to create/join again is rejected with `already_in_room`.
 | `grant_broadcast` | Host | `playerId: string \| null` | *(none)* |
 | `kick` | Host | `playerId: string` | *(none — host gets `player_left`)* |
 | `leave` | Player | — | *(none — host gets `player_left {reason:"left"}`)* |
-| `set_max_players` | Host | `maxPlayers: integer 1–12` | *(none)* — later joins over the limit get `room_full`. Nobody already seated is removed. A new room starts at 12. |
+| `set_max_players` | Host | `maxPlayers: integer 1–32` | *(none)* — later joins over the limit get `room_full`. Nobody already seated is removed. A new room starts at 32. |
 
 `Target` is one of:
 
@@ -150,7 +150,7 @@ ignored, so a phone can never impersonate the host or another player.
 | `not_in_room` | `send`/`grant_broadcast`/`kick`/`leave`/`set_max_players` before creating or joining |
 | `already_in_room` | `host_create`/`host_resume`/`join` on a socket that already has an identity |
 | `room_not_found` | No room with that code |
-| `room_full` | Room already has as many players as its limit (12, or what the host set with `set_max_players`) |
+| `room_full` | Room already has as many players as its limit (32, or what the host set with `set_max_players`) |
 | `name_invalid` | Name empty or longer than 16 characters after trimming |
 | `name_taken` | Another player in the room has that name |
 | `bad_host_key` | `host_resume` with the wrong key |

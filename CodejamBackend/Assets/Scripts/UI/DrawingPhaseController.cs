@@ -19,7 +19,11 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(UIDocument))]
 public class DrawingPhaseController : MonoBehaviour
 {
-    private const int MaxSeats = 12;
+    // Icons fill an inner ring of 12, then an outer ring for the rest (up to the 32-player limit).
+    // While the outer ring is in use, both rings spread out and icons shrink (is-crowded).
+    private const int InnerRingSeats = 12;
+    private const int OuterRingSeats = GameSessionData.MaxPlayersLimit - InnerRingSeats;
+    private const string CrowdedClass = "is-crowded";
 
     [SerializeField, Required] private UIDocument document;
     [SerializeField, AssetsOnly] private AudioClip submitSound;
@@ -512,6 +516,8 @@ public class DrawingPhaseController : MonoBehaviour
         if (_iconsLayer == null || _orderedIcons.Count == 0)
             return;
 
+        _iconsLayer.EnableInClassList(CrowdedClass, _orderedIcons.Count > InnerRingSeats);
+
         for (int i = 0; i < _orderedIcons.Count; i++)
         {
             Vector2 pos = ComputeClockwisePanelPosition(i);
@@ -522,8 +528,9 @@ public class DrawingPhaseController : MonoBehaviour
     }
 
     /// <summary>
-    /// Top-left clockwise ring (seat 0 = 135 deg, stepping -30 deg clockwise) around the center card,
-    /// matching the join screen layout.
+    /// Top-left clockwise rings around the center card, matching the join screen layout:
+    /// seats 0-11 on the inner ring (seat 0 = 135 deg, -30 deg per seat), seats 12+ on an outer
+    /// ring whose seats sit between the inner ones.
     /// </summary>
     private Vector2 ComputeClockwisePanelPosition(int seatIndex)
     {
@@ -533,11 +540,26 @@ public class DrawingPhaseController : MonoBehaviour
 
         float cx = w * 0.5f;
         float cy = h * 0.5f;
-        float rx = w * 0.36f;
-        float ry = h * 0.35f;
 
-        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise (-30 deg/step)
-        float angleDeg = 135f - (seatIndex % MaxSeats) * (360f / MaxSeats);
+        bool crowded = _orderedIcons.Count > InnerRingSeats;
+        bool outer = seatIndex >= InnerRingSeats;
+
+        float rx, ry, angleDeg;
+        if (!outer)
+        {
+            rx = w * (crowded ? 0.335f : 0.36f);
+            ry = h * (crowded ? 0.33f : 0.35f);
+            angleDeg = 135f - seatIndex * (360f / InnerRingSeats);
+        }
+        else
+        {
+            rx = w * 0.455f;
+            ry = h * 0.43f;
+            int outerIndex = (seatIndex - InnerRingSeats) % OuterRingSeats;
+            angleDeg = 135f - (outerIndex + 0.5f) * (360f / OuterRingSeats);
+        }
+
+        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise
         float rad = angleDeg * Mathf.Deg2Rad;
 
         float x = cx + Mathf.Cos(rad) * rx;

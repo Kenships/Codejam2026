@@ -22,11 +22,14 @@ public class MenuController : MonoBehaviour
 {
     public const int NameMaxLength = 16;
     public const int RoomCodeLength = 4;
-    /// <summary>Seats in this game, picked on the Create Game screen (up to 12).</summary>
+    /// <summary>Seats in this game, picked on the Create Game screen (up to GameSessionData.MaxPlayersLimit).</summary>
     public static int MaxPlayers => GameSessionData.MaxPlayers;
 
     /// <summary>Drawing / guessing time step on the Create Game screen.</summary>
     private const int PhaseSecondsStep = 10;
+
+    /// <summary>On the lobby labels layer once the outer ring of seats is in use (smaller names).</summary>
+    private const string CrowdedClass = "is-crowded";
     private const string RoomCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ";
 
     // Tailwind red-400
@@ -1118,6 +1121,9 @@ public class MenuController : MonoBehaviour
         Camera cam = colorStage.StageCamera;
         if (cam == null)
             return;
+
+        // Two rings of players: smaller name tags so neighbours don't overlap
+        _characterLabelsLayer.EnableInClassList(CrowdedClass, colorStage.IsOuterRingInUse);
 
         for (int i = 0; i < _players.Count; i++)
         {

@@ -13,7 +13,7 @@ public static class GameSessionData
     public const int MinPlayersToStart = 2;
 
     /// <summary>Most players a room can hold (the relay's own hard limit).</summary>
-    public const int MaxPlayersLimit = 12;
+    public const int MaxPlayersLimit = 32;
 
     /// <summary>Range for the drawing and guessing timers picked on the Create Game screen.</summary>
     public const int MinPhaseSeconds = 30;

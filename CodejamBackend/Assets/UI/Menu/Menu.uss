@@ -34,6 +34,13 @@
     overflow: hidden;
 }
 
+/* Outer ring of seats in use (more than 12 players): smaller tags so neighbours don't overlap */
+.menu-root .is-crowded .character-name-label {
+    padding: 1px 6px;
+    font-size: 17px;
+    letter-spacing: 1px;
+}
+
 .menu-root .character-name-label {
     position: absolute;
     translate: -50% -50%;

@@ -1,6 +1,6 @@
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ'
 export const ROOM_CODE_LENGTH = 4
-export const MAX_PLAYERS = 12
+export const MAX_PLAYERS = 32
 export const NAME_MAX_LENGTH = 16
 /** PROTOCOL.md §1: Max frame size is 64 KB. Larger frames close the socket with code 1009. */
 export const MAX_FRAME_BYTES = 64 * 1024

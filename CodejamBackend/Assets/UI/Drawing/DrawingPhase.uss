@@ -254,6 +254,31 @@
     text-shadow: 0 0 10px rgb(0, 0, 0);
 }
 
+/* More than 12 icons: a second ring opens up (DrawingPhaseController), so everything shrinks */
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__cube {
+    width: 62px;
+    height: 62px;
+    margin-bottom: 6px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__pfp {
+    width: 46px;
+    height: 46px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__check {
+    right: -8px;
+    top: -8px;
+    padding: 1px 4px;
+    font-size: 10px;
+}
+
+.drawing-root .submitted-icons-layer.is-crowded .submitted-player-icon__name {
+    padding: 1px 6px;
+    font-size: 15px;
+    letter-spacing: 1px;
+}
+
 .drawing-root .is-hidden {
     display: none;
 }

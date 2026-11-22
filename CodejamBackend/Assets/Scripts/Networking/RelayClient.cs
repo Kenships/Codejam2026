@@ -70,12 +70,12 @@ namespace Codejam.Networking
         private int _maxPlayers = RelayMaxPlayers;
 
         /// <summary>The relay's own hard limit on players per room.</summary>
-        public const int RelayMaxPlayers = 12;
+        public const int RelayMaxPlayers = 32;
 
         // ---- public state ----
 
         /// <summary>
-        /// Most players the room lets in (1..12); later joins are refused with room_full.
+        /// Most players the room lets in (1..RelayMaxPlayers); later joins are refused with room_full.
         /// Sent right away when in a room, and again every time a room is created or resumed.
         /// Lowering it never removes anyone already seated.
         /// </summary>
