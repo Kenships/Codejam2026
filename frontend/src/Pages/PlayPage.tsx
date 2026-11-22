@@ -6,6 +6,7 @@ import { CategoryPickerCard } from '@/components/CategoryPickerCard'
 import { DrawingCanvasCard } from '@/components/DrawingCanvasCard'
 import { HowToPlay, TutorialTabs } from '@/components/HowToPlay'
 import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
+import { PromptSuggestionForm } from '@/components/PromptSuggestionForm'
 import {
   DrawingViewport,
   PlayingBoardCard,
@@ -440,6 +441,7 @@ export function PlayPage() {
                       <LobbyPfpCanvas inkColor={waitingColor} />
                     </TutorialTabs>
                   )}
+                  {status === 'joined' && <PromptSuggestionForm />}
                   {status === 'disconnected' && (
                     <Button
                       type="button"

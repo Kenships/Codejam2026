@@ -414,7 +414,12 @@ namespace Codejam.Networking
 
         private void OnPlayerDisconnected(RelayPlayer player) => Raise(PlayerDisconnected, player.Id);
 
-        private void OnPlayerLeft(RelayPlayer player, string reason) => Raise(PlayerLeft, player.Id, reason);
+        private void OnPlayerLeft(RelayPlayer player, string reason)
+        {
+            // Gone for good: their suggestion shouldn't be dealt to anyone any more
+            GameSessionData.PromptSuggestions.Remove(player.Id);
+            Raise(PlayerLeft, player.Id, reason);
+        }
 
         private void OnRelayError(string code, string message) => Raise(RelayError, code, message);
 
@@ -441,6 +446,14 @@ namespace Codejam.Networking
                     string hex = d.Value<string>("hex");
                     if (!string.IsNullOrEmpty(hex))
                         Raise(GuessSubmitted, fromPlayerId, hex);
+                    break;
+
+                case "prompt_suggest":
+                    // Stored here (not in GameManager) because it arrives in the Menu scene's lobby
+                    string suggestion = d["text"]?.Type == JTokenType.String ? (string)d["text"] : "";
+                    string stored = GameSessionData.SetPromptSuggestion(fromPlayerId, suggestion);
+                    if (logTraffic)
+                        Debug.Log($"[HostRelayClient] {fromPlayerId} suggested \"{stored}\"");
                     break;
 
                 case "category_pick":

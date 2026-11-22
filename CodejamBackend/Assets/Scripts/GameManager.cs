@@ -922,8 +922,9 @@ public class GameManager : Singleton<GameManager>
     }
 
     /// <summary>
-    /// Gives this game's artists fresh categories to pick from. Everyone's options and pick from
-    /// last game are cleared first, so non-artists have none (and their picks are ignored).
+    /// Gives this game's artists fresh categories to pick from, including players' lobby
+    /// suggestions. Everyone's options and pick from last game are cleared first, so non-artists
+    /// have none (and their picks are ignored).
     /// </summary>
     private void DealCategories(List<GameSessionData.SessionPlayer> artists)
     {
@@ -933,11 +934,27 @@ public class GameManager : Singleton<GameManager>
             p.category = null;
         }
 
+        // Suggestions from players in this game (each goes to exactly one other artist)
+        List<CategoryWordBank.Suggestion> suggestions = new();
+        foreach (GameSessionData.SessionPlayer p in GameSessionData.Players)
+        {
+            if (GameSessionData.PromptSuggestions.TryGetValue(p.playerId, out string text))
+                suggestions.Add(new CategoryWordBank.Suggestion(p.playerId, text));
+        }
+
+        List<string> artistIds = artists.ConvertAll(a => a.playerId);
         System.Random random = useSeed ? new System.Random(seed + 1) : new System.Random();
-        List<string[]> hands = CategoryWordBank.Deal(artists.Count, random);
+        List<string[]> hands = CategoryWordBank.Deal(artistIds, suggestions, random, out List<CategoryWordBank.Suggestion> undelivered);
 
         for (int i = 0; i < artists.Count; i++)
             artists[i].categoryOptions = hands[i];
+
+        foreach (CategoryWordBank.Suggestion s in undelivered)
+        {
+            GameSessionData.SessionPlayer from = GameSessionData.FindPlayer(s.FromPlayerId);
+            Debug.Log($"[GameManager] Couldn't deal {from?.name ?? s.FromPlayerId}'s suggestion \"{s.Text}\": " +
+                      "no other artist had room for it this game.");
+        }
     }
 
     /// <summary>

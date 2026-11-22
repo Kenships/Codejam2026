@@ -32,6 +32,8 @@ export interface LoginState {
   pfpStrokes: DrawingStroke[]
   /** GZIP-compressed PFP payload ready to re-send on lobby replay or reconnect */
   pfpCompressed: SavedPfpCompressed | null
+  /** Category this player suggested in the lobby ('' = none); re-sent on reconnect like the PFP */
+  promptSuggestion: string
 
   // Ephemeral connection state (not persisted)
   status: ConnectionStatus
@@ -40,6 +42,7 @@ export interface LoginState {
   setUsername: (username: string) => void
   setRoom: (room: string) => void
   setPfpDataUrl: (pfpDataUrl: string | null) => void
+  setPromptSuggestion: (promptSuggestion: string) => void
   setPfp: (
     pfp: {
       dataUrl: string
@@ -65,6 +68,7 @@ const persistedInitialState = {
   pfpDataUrl: null as string | null,
   pfpStrokes: [] as DrawingStroke[],
   pfpCompressed: null as SavedPfpCompressed | null,
+  promptSuggestion: '',
 }
 
 const ephemeralInitialState = {
@@ -80,6 +84,7 @@ export const useLoginStore = create<LoginState>()(
       setUsername: (username) => set({ username }),
       setRoom: (room) => set({ room }),
       setPfpDataUrl: (pfpDataUrl) => set({ pfpDataUrl }),
+      setPromptSuggestion: (promptSuggestion) => set({ promptSuggestion }),
       setPfp: (pfp) =>
         set(
           pfp
@@ -129,6 +134,7 @@ export const useLoginStore = create<LoginState>()(
         pfpDataUrl: state.pfpDataUrl,
         pfpStrokes: state.pfpStrokes,
         pfpCompressed: state.pfpCompressed,
+        promptSuggestion: state.promptSuggestion,
       }),
       merge: (persistedState, currentState) => {
         const persisted =
@@ -141,6 +147,10 @@ export const useLoginStore = create<LoginState>()(
           pfpStrokes: Array.isArray(persisted.pfpStrokes)
             ? persisted.pfpStrokes
             : [],
+          promptSuggestion:
+            typeof persisted.promptSuggestion === 'string'
+              ? persisted.promptSuggestion
+              : '',
         }
       },
     }
