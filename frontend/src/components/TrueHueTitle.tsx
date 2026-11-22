@@ -49,7 +49,9 @@ export function TrueHueTitle({
     return () => window.clearTimeout(timerId)
   }, [overlapAnimate])
 
-  const sizeClass = compact ? 'text-4xl sm:text-5xl' : 'text-6xl sm:text-8xl'
+  const sizeClass = compact
+    ? 'text-3xl sm:text-4xl leading-none'
+    : 'text-5xl sm:text-6xl leading-none'
 
   if (!overlapAnimate) {
     return (

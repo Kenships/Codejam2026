@@ -455,18 +455,18 @@ export function PlayPage() {
       case 'waiting':
         return (
           <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
-            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
-              <div className="flex flex-col gap-2 p-2">
-                <CardHeader>
-                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey py-2">
+              <div className="flex flex-col gap-1.5 p-1">
+                <CardHeader className="gap-1">
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
                     {renderWaitingTitle()}
                   </CardTitle>
-                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm leading-snug text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
                     {renderWaitingDescription()}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                <CardContent className="flex flex-col items-center gap-1.5 pb-2 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5">
                     {room && (
                       <p className="text-base sm:text-lg tracking-wider uppercase">
                         Room: <span className="font-semibold">{room}</span>
@@ -488,7 +488,7 @@ export function PlayPage() {
                     <Button
                       type="button"
                       onClick={handleLeave}
-                      className="mt-2 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-2 hover:bg-(--hue) hover:text-black"
+                      className="mt-1 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-1.5 hover:bg-(--hue) hover:text-black"
                     >
                       Back to Join
                     </Button>
@@ -515,18 +515,18 @@ export function PlayPage() {
         if (!drawingTarget) {
           return (
             <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
-              <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
-                <div className="flex flex-col gap-2 p-2">
-                  <CardHeader>
-                    <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+              <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey py-2">
+                <div className="flex flex-col gap-1.5 p-1">
+                  <CardHeader className="gap-1">
+                    <CardTitle className="font-jersey sm:text-3xl text-2xl leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
                       Artists Are Drawing
                     </CardTitle>
-                    <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                    <CardDescription className="font-jersey select-none text-center sm:text-base text-sm leading-snug text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
                       You&apos;re guessing this game. Hang tight, guessing starts once the artists are done<BouncingDots />
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
-                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                  <CardContent className="flex flex-col items-center gap-2 pb-2 text-center text-(--hue)">
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5">
                       {room && (
                         <p className="text-base sm:text-lg tracking-wider uppercase">
                           Room: <span className="font-semibold">{room}</span>
@@ -583,18 +583,18 @@ export function PlayPage() {
       case 'drawing_done':
         return (
           <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
-            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
-              <div className="flex flex-col gap-2 p-2">
-                <CardHeader>
-                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey py-2">
+              <div className="flex flex-col gap-1.5 p-1">
+                <CardHeader className="gap-1">
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
                     Drawing Submitted!
                   </CardTitle>
-                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm leading-snug text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
                     Waiting for other players to finish drawing<BouncingDots />
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                <CardContent className="flex flex-col items-center gap-1.5 pb-2 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5">
                     {room && (
                       <p className="text-base sm:text-lg tracking-wider uppercase">
                         Room: <span className="font-semibold">{room}</span>
@@ -622,18 +622,18 @@ export function PlayPage() {
       case 'artist_guessing':
         return (
           <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
-            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
-              <div className="flex flex-col gap-2 p-2">
-                <CardHeader>
-                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey py-2">
+              <div className="flex flex-col gap-1.5 p-1">
+                <CardHeader className="gap-1">
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
                     People Are Guessing Your Art
                   </CardTitle>
-                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm leading-snug text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
                     Hang tight while everyone guesses your colour<BouncingDots />
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                <CardContent className="flex flex-col items-center gap-1.5 pb-2 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5">
                     {room && (
                       <p className="text-base sm:text-lg tracking-wider uppercase">
                         Room: <span className="font-semibold">{room}</span>
@@ -678,18 +678,18 @@ export function PlayPage() {
       case 'finished':
         return (
           <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
-            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
-              <div className="flex flex-col gap-2 p-2">
-                <CardHeader>
-                  <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+            <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey py-2">
+              <div className="flex flex-col gap-1.5 p-1">
+                <CardHeader className="gap-1">
+                  <CardTitle className="font-jersey sm:text-3xl text-2xl leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
                     Thanks for Playing!
                   </CardTitle>
-                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                  <CardDescription className="font-jersey select-none text-center sm:text-base text-sm leading-snug text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
                     Waiting for host to start another round<BouncingDots />
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-col items-center gap-3 pb-4 text-center text-(--hue)">
-                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                <CardContent className="flex flex-col items-center gap-2 pb-2 text-center text-(--hue)">
+                  <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5">
                     {room && (
                       <p className="text-base sm:text-lg tracking-wider uppercase">
                         Room: <span className="font-semibold">{room}</span>
@@ -706,7 +706,7 @@ export function PlayPage() {
                   <Button
                     type="button"
                     onClick={handlePlayNewGame}
-                    className="mt-1 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-2 hover:bg-(--hue) hover:text-black"
+                    className="mt-1 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-1.5 hover:bg-(--hue) hover:text-black"
                   >
                     Play a New Game
                   </Button>
@@ -720,10 +720,12 @@ export function PlayPage() {
 
   return (
     <div
-      className="fixed inset-0 h-dvh overflow-hidden overscroll-none touch-none bg-black flex items-center justify-center px-8 py-4 sm:px-6 sm:py-8"
+      className={`fixed inset-0 h-dvh overflow-y-auto overflow-x-hidden overscroll-none bg-black flex px-6 py-2 sm:px-6 sm:py-3 ${
+        DEV_MOCK_MODE ? 'pb-16 sm:pb-16' : ''
+      }`}
       style={{ '--hue': uiColor } as CSSProperties}
     >
-      <div className="absolute inset-0">
+      <div className="pointer-events-none fixed inset-0">
         <PixelBlast
           variant="square"
           pixelSize={10}
@@ -739,7 +741,7 @@ export function PlayPage() {
         />
       </div>
 
-      <div className="relative flex flex-col items-center gap-4 w-full max-w-100">
+      <div className="relative m-auto flex flex-col items-center gap-2 w-full max-w-100">
         <div className="flex flex-col items-center select-none">
           <TrueHueTitle
             overlapAnimate={isWaitingScreen}
@@ -757,7 +759,7 @@ export function PlayPage() {
 
       {/* TODO: delete dev state-switcher buttons once backend is ready */}
       {DEV_MOCK_MODE && (
-        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-1.5 rounded border border-white/25 bg-black/85 px-3 py-2 text-xs text-white backdrop-blur-sm max-w-[95vw]">
+        <div className="fixed bottom-1.5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-1 rounded border border-white/25 bg-black/85 px-2.5 py-1 text-[11px] text-white backdrop-blur-sm max-w-[95vw]">
           <div className="flex flex-wrap items-center justify-center gap-1">
             <span className="mr-1 uppercase text-white/60">Phase:</span>
             {DEV_GAME_PHASES.map((phase) => (

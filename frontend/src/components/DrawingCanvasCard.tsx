@@ -473,8 +473,8 @@ export function DrawingCanvasCard({
         <div
           className={`relative mx-auto aspect-square w-full overflow-hidden rounded border-2 border-(--hue) bg-black ${
             isFullscreen
-              ? 'max-w-[min(92vw,calc(100dvh-13rem))]'
-              : 'max-w-[min(512px,42dvh)]'
+              ? 'max-w-[min(92vw,calc(100dvh-11rem))]'
+              : 'max-w-[min(100%,36dvh,360px)]'
           }`}
         >
           <canvas

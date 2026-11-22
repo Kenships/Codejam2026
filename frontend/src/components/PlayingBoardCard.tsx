@@ -70,7 +70,7 @@ export function DrawingViewport({
   }, [imageBase64, mime])
 
   return (
-    <div className="relative mx-auto aspect-square w-full max-w-[min(512px,40dvh)] overflow-hidden border-2 border-(--hue) bg-black flex items-center justify-center">
+    <div className="relative mx-auto aspect-square w-full max-w-[min(100%,30dvh,320px)] overflow-hidden border-2 border-(--hue) bg-black flex items-center justify-center">
       {isDecompressing ? (
         <span className="text-base text-(--hue)/70">
           Decompressing drawing<BouncingDots />

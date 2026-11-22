@@ -105,17 +105,17 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
   }
 
   return (
-    <Card className="w-full select-none bg-black/70 ring-0 border-2 border-(--hue) font-jersey">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2 p-2">
-        <CardHeader>
-          <CardTitle className="font-jersey sm:text-2xl text-lg select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+    <Card className="w-full select-none bg-black/70 ring-0 border-2 border-(--hue) font-jersey py-2">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-1.5 p-1">
+        <CardHeader className="gap-1">
+          <CardTitle className="font-jersey sm:text-2xl text-lg leading-tight select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
             Join a Game
           </CardTitle>
-          <CardDescription className="font-jersey select-none sm:text-center sm:text-base text-sm text-center text-(--hue) [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+          <CardDescription className="font-jersey select-none sm:text-center sm:text-base text-sm leading-tight text-center text-(--hue) [text-shadow:0_0_6px_#000,0_0_12px_#000]">
             Enter your username and the 4-letter room code
           </CardDescription>
           {/* px-0: already inside CardHeader's padding; text-base: iOS zooms into inputs under 16px */}
-          <CardContent className="flex flex-col gap-3 px-0">
+          <CardContent className="flex flex-col gap-2 px-0 pt-1">
             <input
               type="text"
               placeholder="Username"
@@ -127,7 +127,7 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
                 setUsername(e.target.value)
                 if (error) setError(null)
               }}
-              className="border-2 border-(--hue) font-jersey bg-black/50 p-2 text-base text-(--hue) placeholder:text-(--hue)/60 disabled:opacity-60"
+              className="border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base text-(--hue) placeholder:text-(--hue)/60 disabled:opacity-60"
             />
             <input
               type="text"
@@ -143,7 +143,7 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
                 setRoom(e.target.value.toUpperCase())
                 if (error) setError(null)
               }}
-              className="border-2 border-(--hue) font-jersey bg-black/50 p-2 text-base uppercase tracking-widest text-(--hue) placeholder:text-(--hue)/60 placeholder:normal-case placeholder:tracking-normal disabled:opacity-60"
+              className="border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base uppercase tracking-widest text-(--hue) placeholder:text-(--hue)/60 placeholder:normal-case placeholder:tracking-normal disabled:opacity-60"
             />
             <LobbyPfpCanvas inkColor={inkColor} />
             {error && (
@@ -155,11 +155,11 @@ export const LoginCard = ({ inkColor = '#ffffff' }: LoginCardProps) => {
               </p>
             )}
           </CardContent>
-          <CardFooter className="flex justify-center gap-4">
+          <CardFooter className="flex justify-center gap-4 pt-1">
             <Button
               type="submit"
               disabled={isJoining}
-              className="transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-2 hover:bg-(--hue) hover:text-black disabled:opacity-60"
+              className="transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-4 py-1.5 hover:bg-(--hue) hover:text-black disabled:opacity-60"
             >
               {isJoining ? (
                 <>

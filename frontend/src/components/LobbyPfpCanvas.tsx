@@ -234,12 +234,12 @@ export function LobbyPfpCanvas({ inkColor }: LobbyPfpCanvasProps) {
   }
 
   return (
-    <div className="flex w-full flex-col items-center gap-2 pt-1">
+    <div className="flex w-full flex-col items-center gap-1.5 pt-0.5">
       <span className="text-xs uppercase tracking-widest text-(--hue)/75">
         Draw Your Avatar
       </span>
 
-      <div className="relative h-32 w-32 sm:h-36 sm:w-36 overflow-hidden border-2 border-(--hue) bg-black">
+      <div className="relative aspect-square h-28 w-28 max-h-[16dvh] max-w-[16dvh] min-h-20 min-w-20 overflow-hidden border-2 border-(--hue) bg-black">
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
