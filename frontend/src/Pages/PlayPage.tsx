@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router'
 
 import PixelBlast from '@/components/PixelBlast'
+import { CategoryPickerCard } from '@/components/CategoryPickerCard'
 import { DrawingCanvasCard } from '@/components/DrawingCanvasCard'
 import { LobbyPfpCanvas } from '@/components/LobbyPfpCanvas'
 import {
@@ -28,6 +29,14 @@ export type GamePhase =
   | 'results'
   | 'results_artist'
   | 'finished'
+
+interface DrawingTarget {
+  hex: string
+  /** 4 category choices from host, or null for old hosts that don't send categories */
+  categories: string[] | null
+  /** Picked category (from host on rejoin, or tapped locally), or null if not picked yet */
+  category: string | null
+}
 
 const DEV_GAME_PHASES: GamePhase[] = [
   'waiting',
@@ -133,10 +142,19 @@ export function PlayPage() {
   const [waitingHue, setWaitingHue] = useState(0)
   // Picked guess hue for the playing board (null = default #ffffff white)
   const [guessHue, setGuessHue] = useState<number | null>(null)
-  // Target colour received from the host (`your_target` message); mocked in DEV_MOCK_MODE
-  const [drawingTargetHex, setDrawingTargetHex] = useState<string>(
-    DEV_MOCK_MODE ? '#FF5733' : '#ffffff'
+  // Target colour & category picker state received from the host (`your_target`); mocked in DEV_MOCK_MODE
+  const [drawingTarget, setDrawingTarget] = useState<DrawingTarget | null>(
+    DEV_MOCK_MODE
+      ? {
+          hex: '#FF5733',
+          categories: ['Animal', 'Food', 'Place', 'Weather'],
+          category: null,
+        }
+      : null
   )
+  // Drawing countdown deadline (derived from state.remainingMs minus catch-up ageMs)
+  const [drawingDeadlineMs, setDrawingDeadlineMs] = useState<number | null>(null)
+  const [drawingDurationSec, setDrawingDurationSec] = useState<number>(60)
   // Compressed drawing received from the relay/host for the `playing` (guessing) phase
   const [incomingDrawing, setIncomingDrawing] =
     useState<IncomingRoundDrawing | null>(null)
@@ -166,9 +184,44 @@ export function PlayPage() {
   }, [])
 
   useEffect(() => {
-    return relayClient.onMessage(({ d }) => {
+    return relayClient.onMessage((msg) => {
+      const { d, ageMs } = msg
+      const rawRemainingMs =
+        typeof d.remainingMs === 'number' && Number.isFinite(d.remainingMs)
+          ? d.remainingMs
+          : undefined
+      const remainingMs =
+        rawRemainingMs !== undefined
+          ? Math.max(0, rawRemainingMs - (typeof ageMs === 'number' ? ageMs : 0))
+          : undefined
+
       if (d.t === 'your_target' && typeof d.hex === 'string') {
-        setDrawingTargetHex(d.hex)
+        const hex = d.hex
+        const categories =
+          Array.isArray(d.categories) &&
+          d.categories.length > 0 &&
+          d.categories.every((c): c is string => typeof c === 'string')
+            ? d.categories
+            : null
+        const category =
+          typeof d.category === 'string' && d.category.length > 0
+            ? d.category
+            : null
+
+        setDrawingTarget((prev) => {
+          const sameTarget =
+            prev !== null &&
+            prev.hex === hex &&
+            prev.categories !== null &&
+            categories !== null &&
+            prev.categories.length === categories.length &&
+            prev.categories.every((c, i) => c === categories[i])
+          return {
+            hex,
+            categories,
+            category: category ?? (sameTarget ? prev.category : null),
+          }
+        })
       } else if (
         (d.t === 'round_drawing' || d.t === 'drawing_submit') &&
         typeof d.image === 'string'
@@ -235,8 +288,21 @@ export function PlayPage() {
           d.phase === 'results' ||
           d.phase === 'finished')
       ) {
-        if (d.phase === 'playing') {
-          setGuessHue(null)
+        if (d.phase === 'drawing') {
+          if (remainingMs !== undefined) {
+            setDrawingDeadlineMs(Date.now() + remainingMs)
+            if (rawRemainingMs !== undefined && rawRemainingMs > 0) {
+              const totalSec = Math.max(1, Math.ceil(rawRemainingMs / 1000))
+              setDrawingDurationSec((prev) => Math.max(prev, totalSec))
+            }
+          }
+        } else {
+          setDrawingTarget(null)
+          setDrawingDeadlineMs(null)
+          setDrawingDurationSec(60)
+          if (d.phase === 'playing') {
+            setGuessHue(null)
+          }
         }
         setGamePhase(d.phase)
       }
@@ -245,15 +311,17 @@ export function PlayPage() {
 
   // Any status other than 'joined' always falls back to the waiting/loading screen
   const activePhase: GamePhase = status !== 'joined' ? 'waiting' : gamePhase
+  // Mid-game joiners in phase "drawing" who never received `your_target` see a waiting screen
+  const isDrawingWaiting = activePhase === 'drawing' && drawingTarget === null
+  const isWaitingScreen =
+    activePhase === 'waiting' ||
+    activePhase === 'drawing_done' ||
+    activePhase === 'finished' ||
+    isDrawingWaiting
 
-  // Slowly cycle the hue around the rainbow on the waiting, drawing_done, and finished screens
+  // Slowly cycle the hue around the rainbow on waiting, drawing_done, mid-game drawing wait, and finished screens
   useEffect(() => {
-    if (
-      activePhase !== 'waiting' &&
-      activePhase !== 'drawing_done' &&
-      activePhase !== 'finished'
-    )
-      return
+    if (!isWaitingScreen) return
 
     let frameId = 0
     let lastTime = performance.now()
@@ -268,21 +336,26 @@ export function PlayPage() {
 
     frameId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frameId)
-  }, [activePhase])
+  }, [isWaitingScreen])
 
   const waitingColor = hueToHex(waitingHue)
   const pickedColor = guessHue === null ? '#ffffff' : hueToHex(guessHue)
-  const uiColor =
-    activePhase === 'waiting' ||
-    activePhase === 'drawing_done' ||
-    activePhase === 'finished'
-      ? waitingColor
-      : (activePhase === 'results' || activePhase === 'results_artist') &&
-          roundResult
-        ? roundResult.targetHex
-        : activePhase === 'drawing'
-          ? drawingTargetHex
-          : pickedColor
+  const uiColor = isWaitingScreen
+    ? waitingColor
+    : (activePhase === 'results' || activePhase === 'results_artist') &&
+        roundResult
+      ? roundResult.targetHex
+      : activePhase === 'drawing' && drawingTarget
+        ? drawingTarget.hex
+        : pickedColor
+
+  const handleCategoryPick = (choice: string) => {
+    relayClient.send('host', {
+      t: 'category_pick',
+      category: choice,
+    })
+    setDrawingTarget((prev) => (prev ? { ...prev, category: choice } : prev))
+  }
 
   const handleLeave = () => {
     relayClient.disconnect()
@@ -385,10 +458,59 @@ export function PlayPage() {
         )
 
       case 'drawing':
+        if (!drawingTarget) {
+          return (
+            <SquareHueSlider value={waitingHue} onChange={setWaitingHue}>
+              <Card className="w-full select-none bg-black/80 ring-0 border-0 font-jersey">
+                <div className="flex flex-col gap-2 p-2">
+                  <CardHeader>
+                    <CardTitle className="font-jersey sm:text-3xl text-2xl select-none text-center text-(--hue) [text-shadow:0_0_8px_#000,0_0_16px_#000]">
+                      Round in Progress
+                    </CardTitle>
+                    <CardDescription className="font-jersey select-none text-center sm:text-base text-sm text-(--hue)/80 [text-shadow:0_0_6px_#000,0_0_12px_#000]">
+                      Round in progress, you&apos;ll join in when guessing starts
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col items-center gap-2 pb-4 text-center text-(--hue)">
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+                      {room && (
+                        <p className="text-base sm:text-lg tracking-wider uppercase">
+                          Room: <span className="font-semibold">{room}</span>
+                        </p>
+                      )}
+                      {username && (
+                        <p className="text-base text-(--hue)/80">
+                          Joined as {username}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </div>
+              </Card>
+            </SquareHueSlider>
+          )
+        }
+
+        if (
+          drawingTarget.categories !== null &&
+          drawingTarget.category === null
+        ) {
+          return (
+            <CategoryPickerCard
+              targetHex={drawingTarget.hex}
+              categories={drawingTarget.categories}
+              deadlineMs={drawingDeadlineMs}
+              onPick={handleCategoryPick}
+            />
+          )
+        }
+
         return (
           <DrawingCanvasCard
-            targetHex={drawingTargetHex}
-            durationSec={60}
+            targetHex={drawingTarget.hex}
+            category={drawingTarget.category}
+            durationSec={drawingDurationSec}
+            deadlineMs={drawingDeadlineMs}
             onSubmit={(sub) => {
               // Feed the compressed drawing into local state and transition to the spinning waiting state
               setIncomingDrawing({
@@ -518,14 +640,10 @@ export function PlayPage() {
       <div className="relative flex flex-col items-center gap-4 w-full max-w-100">
         <div className="flex flex-col items-center select-none">
           <TrueHueTitle
-            overlapAnimate={
-              activePhase === 'waiting' ||
-              activePhase === 'drawing_done' ||
-              activePhase === 'finished'
-            }
+            overlapAnimate={isWaitingScreen}
             hueAngle={waitingHue}
             compact={
-              activePhase === 'drawing' ||
+              (activePhase === 'drawing' && !isDrawingWaiting) ||
               activePhase === 'playing' ||
               activePhase === 'playing_done'
             }

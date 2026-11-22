@@ -67,6 +67,8 @@ export type MsgMessage = {
   t: 'msg'
   from: 'host' | (string & {})
   d: Record<string, unknown>
+  catchUp?: true
+  ageMs?: number
 }
 
 export type HostLostMessage = {
@@ -213,7 +215,14 @@ export function parseServerMessage(raw: string): PlayerServerMessage | null {
 
     case 'msg':
       if (typeof parsed.from === 'string' && isRecord(parsed.d)) {
-        return { t: 'msg', from: parsed.from, d: parsed.d }
+        const msg: MsgMessage = { t: 'msg', from: parsed.from, d: parsed.d }
+        if (parsed.catchUp === true) {
+          msg.catchUp = true
+        }
+        if (typeof parsed.ageMs === 'number' && Number.isFinite(parsed.ageMs)) {
+          msg.ageMs = parsed.ageMs
+        }
+        return msg
       }
       return null
 

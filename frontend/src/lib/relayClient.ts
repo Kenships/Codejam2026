@@ -99,6 +99,8 @@ export function getRelayUrl(): string {
 type MsgListener = (msg: MsgMessage) => void
 type ErrorListener = (code: ErrorCode, message: string) => void
 
+const MAX_PENDING_MESSAGES = 64
+
 class RelayClient {
   private ws: WebSocket | null = null
   private currentRoom: string | null = null
@@ -109,6 +111,8 @@ class RelayClient {
   private reconnectTimer: number | null = null
   private msgListeners = new Set<MsgListener>()
   private errorListeners = new Set<ErrorListener>()
+  /** Buffer messages (e.g. catch-up replays right after `joined`) until PlayPage subscribes */
+  private pendingMessages: Array<{ msg: MsgMessage; receivedAt: number }> = []
 
   isJoinedTo(room: string): boolean {
     if (DEV_MOCK_MODE) {
@@ -124,6 +128,19 @@ class RelayClient {
 
   onMessage(listener: MsgListener): () => void {
     this.msgListeners.add(listener)
+    if (this.pendingMessages.length > 0) {
+      const queued = this.pendingMessages
+      this.pendingMessages = []
+      const now = Date.now()
+      for (const { msg, receivedAt } of queued) {
+        const elapsed = Math.max(0, now - receivedAt)
+        const delivered: MsgMessage =
+          typeof msg.ageMs === 'number'
+            ? { ...msg, ageMs: msg.ageMs + elapsed }
+            : msg
+        listener(delivered)
+      }
+    }
     return () => this.msgListeners.delete(listener)
   }
 
@@ -158,6 +175,7 @@ class RelayClient {
     this.currentRoom = null
     this.roomClosedReceived = false
     this.reconnectAttempts = 0
+    this.pendingMessages = []
 
     if (this.ws) {
       const socket = this.ws
@@ -230,6 +248,7 @@ class RelayClient {
     this.roomClosedReceived = false
     this.joined = false
     this.currentRoom = params.room
+    this.pendingMessages = []
 
     return new Promise<JoinedMessage>((resolve, reject) => {
       let settled = false
@@ -307,8 +326,15 @@ class RelayClient {
           }
 
           case 'msg': {
-            for (const listener of this.msgListeners) {
-              listener(msg)
+            if (this.msgListeners.size === 0) {
+              if (this.pendingMessages.length >= MAX_PENDING_MESSAGES) {
+                this.pendingMessages.shift()
+              }
+              this.pendingMessages.push({ msg, receivedAt: Date.now() })
+            } else {
+              for (const listener of this.msgListeners) {
+                listener(msg)
+              }
             }
             break
           }

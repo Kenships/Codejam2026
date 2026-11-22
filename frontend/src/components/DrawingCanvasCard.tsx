@@ -37,8 +37,12 @@ export interface DrawingSubmission {
 interface DrawingCanvasCardProps {
   /** Exact target colour hex received from the API (e.g. "#FF5733") */
   targetHex: string
+  /** Chosen category prompt (PROTOCOL.md §7); replaces free-text input when set */
+  category?: string | null
   /** Round drawing duration in seconds (default 60s) */
   durationSec?: number
+  /** Absolute local deadline timestamp (ms) derived from state.remainingMs - ageMs */
+  deadlineMs?: number | null
   /** Force submitted/waiting state for dev preview */
   forceSubmitted?: boolean
   onSubmit?: (submission: DrawingSubmission) => void
@@ -67,7 +71,9 @@ function quantizeCoord(n: number): number {
 
 export function DrawingCanvasCard({
   targetHex,
+  category = null,
   durationSec = 60,
+  deadlineMs = null,
   forceSubmitted = false,
   onSubmit,
 }: DrawingCanvasCardProps) {
@@ -81,11 +87,16 @@ export function DrawingCanvasCard({
   } | null>(null)
   const submittedRef = useRef(false)
 
+  const [fallbackDeadlineMs] = useState(() => Date.now() + durationSec * 1000)
+  const effectiveDeadlineMs = deadlineMs ?? fallbackDeadlineMs
+
   const [strokesCount, setStrokesCount] = useState(0)
   const [brushSize, setBrushSize] = useState<number>(BRUSH_SIZES[1].value)
   const [isEraser, setIsEraser] = useState(false)
   const [prompt, setPrompt] = useState('')
-  const [secondsLeft, setSecondsLeft] = useState(durationSec)
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(0, Math.ceil((effectiveDeadlineMs - Date.now()) / 1000))
+  )
   const [localSubmitted, setLocalSubmitted] = useState(false)
   const submitted = localSubmitted || forceSubmitted
 
@@ -93,6 +104,16 @@ export function DrawingCanvasCard({
   useEffect(() => {
     promptRef.current = prompt
   }, [prompt])
+
+  const categoryRef = useRef(category)
+  useEffect(() => {
+    categoryRef.current = category
+  }, [category])
+
+  const onSubmitRef = useRef(onSubmit)
+  useEffect(() => {
+    onSubmitRef.current = onSubmit
+  }, [onSubmit])
 
   const redrawCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -182,7 +203,7 @@ export function DrawingCanvasCard({
     flushStrokeBatch()
     setLocalSubmitted(true)
 
-    const trimmedPrompt = promptRef.current.trim()
+    const effectivePrompt = categoryRef.current ?? promptRef.current.trim()
     const canvas = canvasRef.current
     const exported = await compressWhiteDrawingImage({
       cssWidth: canvas?.clientWidth || MAX_CANVAS_PX,
@@ -193,7 +214,7 @@ export function DrawingCanvasCard({
     // Send GZIP-compressed white-on-black image to "host" (always permitted under PROTOCOL.md §3)
     relayClient.send('host', {
       t: 'drawing_submit',
-      prompt: trimmedPrompt,
+      prompt: effectivePrompt,
       image: exported.base64,
       mime: exported.mime,
       compression: exported.compression,
@@ -201,8 +222,8 @@ export function DrawingCanvasCard({
       h: exported.height,
     })
 
-    onSubmit?.({
-      prompt: trimmedPrompt,
+    onSubmitRef.current?.({
+      prompt: effectivePrompt,
       strokes: [...strokesRef.current],
       imageDataUrl: exported.dataUrl,
       imageBase64: exported.base64,
@@ -211,24 +232,35 @@ export function DrawingCanvasCard({
       width: exported.width,
       height: exported.height,
     })
-  }, [flushStrokeBatch, onSubmit])
+  }, [flushStrokeBatch])
 
-  // 60-second countdown timer; auto-submits when time expires
+  // Countdown timer driven by host remainingMs (minus ageMs) or fallback durationSec; auto-submits at 0
   useEffect(() => {
     if (submitted) return
 
-    const deadline = Date.now() + durationSec * 1000
-    const intervalId = window.setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+    const update = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((effectiveDeadlineMs - Date.now()) / 1000)
+      )
       setSecondsLeft(remaining)
       if (remaining === 0) {
-        window.clearInterval(intervalId)
         void finalizeSubmission()
+        return true
+      }
+      return false
+    }
+
+    if (update()) return
+
+    const intervalId = window.setInterval(() => {
+      if (update()) {
+        window.clearInterval(intervalId)
       }
     }, 250)
 
     return () => window.clearInterval(intervalId)
-  }, [durationSec, submitted, finalizeSubmission])
+  }, [effectiveDeadlineMs, submitted, finalizeSubmission])
 
   const getNormalizedPoint = (
     e: ReactPointerEvent<HTMLCanvasElement>
@@ -325,10 +357,11 @@ export function DrawingCanvasCard({
     void finalizeSubmission()
   }
 
-  const progressPct = Math.max(
-    0,
-    Math.min(100, (secondsLeft / durationSec) * 100)
-  )
+  const displayPrompt = (category ?? prompt).trim()
+  const progressPct =
+    durationSec > 0
+      ? Math.max(0, Math.min(100, (secondsLeft / durationSec) * 100))
+      : 0
   const isUrgent = secondsLeft <= 10 && !submitted
 
   return (
@@ -390,9 +423,9 @@ export function DrawingCanvasCard({
 
         {submitted ? (
           <div className="flex w-full flex-col items-center gap-1 rounded border-2 border-(--hue) bg-black/60 px-3 py-2.5 text-center">
-            {prompt.trim() && (
+            {displayPrompt && (
               <p className="text-sm sm:text-base text-(--hue)/85">
-                Clue: &ldquo;{prompt.trim()}&rdquo;
+                {category ? `Prompt: ${displayPrompt}` : `Clue: "${displayPrompt}"`}
               </p>
             )}
             <div className="flex items-center gap-1.5">
@@ -467,16 +500,23 @@ export function DrawingCanvasCard({
               </div>
             </div>
 
-            {/* Prompt input + Submit */}
+            {/* Chosen category prompt (or legacy free-text clue input) + Submit */}
             <form onSubmit={handleFormSubmit} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Write a clue for your colour..."
-                maxLength={PROMPT_MAX_LENGTH}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                className="min-w-0 flex-1 border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base text-(--hue) placeholder:text-(--hue)/60"
-              />
+              {category !== null ? (
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 border-2 border-(--hue)/70 bg-black/50 px-2.5 py-1.5 text-base text-(--hue)">
+                  <span className="shrink-0 text-(--hue)/70">Prompt:</span>
+                  <span className="truncate font-semibold">{category}</span>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Write a clue for your colour..."
+                  maxLength={PROMPT_MAX_LENGTH}
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  className="min-w-0 flex-1 border-2 border-(--hue) font-jersey bg-black/50 px-2.5 py-1.5 text-base text-(--hue) placeholder:text-(--hue)/60"
+                />
+              )}
               <Button
                 type="submit"
                 className="shrink-0 transition-none select-none bg-alpha text-(--hue) border-2 border-(--hue) font-jersey px-3 py-1.5 hover:bg-(--hue) hover:text-black"
