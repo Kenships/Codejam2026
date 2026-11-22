@@ -19,12 +19,6 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(UIDocument))]
 public class DrawingPhaseController : MonoBehaviour
 {
-    // Icons fill an inner ring of 12, then an outer ring for the rest (up to the 32-player limit).
-    // While the outer ring is in use, both rings spread out and icons shrink (is-crowded).
-    private const int InnerRingSeats = 12;
-    private const int OuterRingSeats = GameSessionData.MaxPlayersLimit - InnerRingSeats;
-    private const string CrowdedClass = "is-crowded";
-
     [SerializeField, Required] private UIDocument document;
     [SerializeField, AssetsOnly] private AudioClip submitSound;
 
@@ -511,7 +505,7 @@ public class DrawingPhaseController : MonoBehaviour
         if (_iconsLayer == null || _orderedIcons.Count == 0)
             return;
 
-        _iconsLayer.EnableInClassList(CrowdedClass, _orderedIcons.Count > InnerRingSeats);
+        _iconsLayer.EnableInClassList(PlayerRingLayout.CrowdedClass, PlayerRingLayout.IsCrowded(_orderedIcons.Count));
 
         for (int i = 0; i < _orderedIcons.Count; i++)
         {
@@ -522,46 +516,9 @@ public class DrawingPhaseController : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Top-left clockwise rings around the center card, matching the join screen layout:
-    /// seats 0-11 on the inner ring (seat 0 = 135 deg, -30 deg per seat), seats 12+ on an outer
-    /// ring whose seats sit between the inner ones.
-    /// </summary>
-    private Vector2 ComputeClockwisePanelPosition(int seatIndex)
-    {
-        Rect rect = _iconsLayer.contentRect;
-        float w = rect.width > 1f ? rect.width : 1920f;
-        float h = rect.height > 1f ? rect.height : 1080f;
-
-        float cx = w * 0.5f;
-        float cy = h * 0.5f;
-
-        bool crowded = _orderedIcons.Count > InnerRingSeats;
-        bool outer = seatIndex >= InnerRingSeats;
-
-        float rx, ry, angleDeg;
-        if (!outer)
-        {
-            rx = w * (crowded ? 0.335f : 0.36f);
-            ry = h * (crowded ? 0.33f : 0.35f);
-            angleDeg = 135f - seatIndex * (360f / InnerRingSeats);
-        }
-        else
-        {
-            rx = w * 0.455f;
-            ry = h * 0.43f;
-            int outerIndex = (seatIndex - InnerRingSeats) % OuterRingSeats;
-            angleDeg = 135f - (outerIndex + 0.5f) * (360f / OuterRingSeats);
-        }
-
-        // Panel Y grows downward, so negate Sin for top-left = 135 deg going clockwise
-        float rad = angleDeg * Mathf.Deg2Rad;
-
-        float x = cx + Mathf.Cos(rad) * rx;
-        float y = cy - Mathf.Sin(rad) * ry;
-
-        return new Vector2(x, y);
-    }
+    /// <summary>Seat position around the center card (see PlayerRingLayout).</summary>
+    private Vector2 ComputeClockwisePanelPosition(int seatIndex) =>
+        PlayerRingLayout.PanelPosition(_iconsLayer.contentRect, seatIndex, _orderedIcons.Count);
 
     private void RefreshProgressLabels()
     {
