@@ -6,7 +6,7 @@ import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { Check, Eraser, Trash2, Undo2 } from 'lucide-react'
+import { Check, Eraser, Maximize2, Minimize2, Trash2, Undo2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -98,7 +98,34 @@ export function DrawingCanvasCard({
     Math.max(0, Math.ceil((effectiveDeadlineMs - Date.now()) / 1000))
   )
   const [localSubmitted, setLocalSubmitted] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const submitted = localSubmitted || forceSubmitted
+
+  // Exit fullscreen automatically on Escape key or when submission completes
+  useEffect(() => {
+    if (!isFullscreen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsFullscreen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isFullscreen])
+
+  const toggleFullscreen = () => {
+    setIsFullscreen((prev) => {
+      const next = !prev
+      if (next) {
+        document.documentElement.requestFullscreen?.().catch(() => {
+          // Fallback to CSS fixed fullscreen (e.g. iOS Safari)
+        })
+      } else if (document.fullscreenElement) {
+        document.exitFullscreen?.().catch(() => {})
+      }
+      return next
+    })
+  }
 
   const promptRef = useRef(prompt)
   useEffect(() => {
@@ -202,6 +229,10 @@ export function DrawingCanvasCard({
     activeStrokeRef.current = null
     flushStrokeBatch()
     setLocalSubmitted(true)
+    setIsFullscreen(false)
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {})
+    }
 
     const effectivePrompt = categoryRef.current ?? promptRef.current.trim()
     const canvas = canvasRef.current
@@ -365,8 +396,14 @@ export function DrawingCanvasCard({
   const isUrgent = secondsLeft <= 10 && !submitted
 
   return (
-    <Card className="w-full select-none bg-black/80 ring-0 border-2 border-(--hue) font-jersey text-(--hue)">
-      <CardHeader className="pb-2 pt-3 px-3 sm:px-4">
+    <Card
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-40 flex h-dvh w-screen flex-col justify-between select-none rounded-none border-0 bg-black/95 ring-0 font-jersey text-(--hue)'
+          : 'w-full select-none bg-black/80 ring-0 border-2 border-(--hue) font-jersey text-(--hue)'
+      }
+    >
+      <CardHeader className="pb-2 pt-3 px-3 sm:px-4 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span
@@ -384,15 +421,33 @@ export function DrawingCanvasCard({
             </div>
           </div>
 
-          <span
-            className={`rounded border-2 px-2.5 py-0.5 text-lg sm:text-xl tabular-nums ${
-              isUrgent
-                ? 'border-red-400 text-red-400 animate-pulse'
-                : 'border-(--hue) text-(--hue)'
-            }`}
-          >
-            {submitted ? 'Done' : `${secondsLeft}s`}
-          </span>
+          <div className="flex items-center gap-1.5">
+            {!submitted && (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen drawing'}
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                className="flex h-8 w-8 items-center justify-center rounded border-2 border-(--hue)/70 bg-black/60 text-(--hue) cursor-pointer hover:border-(--hue) hover:bg-(--hue) hover:text-black"
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+              </button>
+            )}
+
+            <span
+              className={`rounded border-2 px-2.5 py-0.5 text-lg sm:text-xl tabular-nums ${
+                isUrgent
+                  ? 'border-red-400 text-red-400 animate-pulse'
+                  : 'border-(--hue) text-(--hue)'
+              }`}
+            >
+              {submitted ? 'Done' : `${secondsLeft}s`}
+            </span>
+          </div>
         </div>
 
         {/* Countdown bar */}
@@ -406,9 +461,19 @@ export function DrawingCanvasCard({
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-2.5 px-3 sm:px-4 pb-3">
-        {/* Drawing canvas (square, capped at 512x512) */}
-        <div className="relative mx-auto aspect-square w-full max-w-[min(512px,42dvh)] overflow-hidden rounded border-2 border-(--hue) bg-black">
+      <CardContent
+        className={`flex flex-col gap-2.5 px-3 sm:px-4 pb-3 ${
+          isFullscreen ? 'min-h-0 flex-1 justify-center' : ''
+        }`}
+      >
+        {/* Drawing canvas (square, internal bitmap capped at 512x512) */}
+        <div
+          className={`relative mx-auto aspect-square w-full overflow-hidden rounded border-2 border-(--hue) bg-black ${
+            isFullscreen
+              ? 'max-w-[min(92vw,calc(100dvh-13rem))]'
+              : 'max-w-[min(512px,42dvh)]'
+          }`}
+        >
           <canvas
             ref={canvasRef}
             onPointerDown={handlePointerDown}

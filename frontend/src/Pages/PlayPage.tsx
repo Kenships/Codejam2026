@@ -618,7 +618,7 @@ export function PlayPage() {
 
   return (
     <div
-      className="fixed inset-0 h-dvh overflow-hidden overscroll-none touch-none bg-black flex items-center justify-center px-4 py-4 sm:py-8"
+      className="fixed inset-0 h-dvh overflow-hidden overscroll-none touch-none bg-black flex items-center justify-center px-8 py-4 sm:px-6 sm:py-8"
       style={{ '--hue': uiColor } as CSSProperties}
     >
       <div className="absolute inset-0">

@@ -22,9 +22,12 @@ export const hueToHex = (hue: number, white = 0) => {
 const RAINBOW = 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)'
 // hollows out the center so only a `thickness`-wide band of the gradient shows
 const RING_MASK = 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)'
+// Extra invisible touch area extending outward around the ring for easier mobile grabbing
+const TOUCH_SLOP = 14
 
-export function SquareHueSlider({ value, onChange, onHover, thickness = 8, children }: Props) {
+export function SquareHueSlider({ value, onChange, onHover, thickness = 16, children }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
   const [box, setBox] = useState({ w: 0, h: 0 })
 
   useEffect(() => {
@@ -43,7 +46,7 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
   }
 
   const ring = { padding: thickness, mask: RING_MASK, background: RAINBOW }
-  const thumb = thickness * 2.5
+  const thumb = Math.max(24, Math.round(thickness * 1.75))
 
   let thumbPos = null
   if (value !== null && box.w) {
@@ -69,6 +72,9 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
     >
       {/* soft neon glow behind the band */}
       <div className="pointer-events-none absolute inset-0 opacity-70 blur-md" style={ring} />
+      {/* visible rainbow ring */}
+      <div className="pointer-events-none absolute inset-0" style={ring} />
+      {/* expanded interactive hit target extending outward around the ring for easy mobile tapping/dragging */}
       <div
         role="slider"
         aria-label="Hue"
@@ -76,17 +82,27 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
         aria-valuemax={360}
         aria-valuenow={value === null ? undefined : Math.round(value)}
         tabIndex={0}
-        className="absolute inset-0 cursor-crosshair touch-none outline-none"
-        style={ring}
+        className="absolute cursor-crosshair touch-none outline-none"
+        style={{ inset: -TOUCH_SLOP }}
         onPointerDown={(e) => {
           e.preventDefault() // stops the press from starting a text selection
+          draggingRef.current = true
           e.currentTarget.setPointerCapture(e.pointerId)
           onChange(hueAt(e))
         }}
         onPointerMove={(e) => {
           const hue = hueAt(e)
           onHover?.(hue)
-          if (e.buttons) onChange(hue)
+          if (draggingRef.current || e.buttons) onChange(hue)
+        }}
+        onPointerUp={() => {
+          draggingRef.current = false
+        }}
+        onPointerCancel={() => {
+          draggingRef.current = false
+        }}
+        onLostPointerCapture={() => {
+          draggingRef.current = false
         }}
         onPointerLeave={() => onHover?.(null)}
         onKeyDown={(e) => {
@@ -96,7 +112,7 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
           onChange(((value ?? 0) + step + 360) % 360)
         }}
       />
-      {/* relative so it paints above the absolutely positioned band */}
+      {/* relative so it paints above the absolutely positioned band and catches inner card clicks */}
       <div className="relative">{children}</div>
       {thumbPos && (
         <div
