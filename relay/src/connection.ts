@@ -2,7 +2,7 @@ import { WebSocket } from "ws";
 import type { Rooms } from "./rooms.ts";
 import type { RateLimit, Timings } from "./config.ts";
 import { TokenBucket } from "./rateLimit.ts";
-import type { Conn, Room } from "./room.ts";
+import type { Conn, Retained, Room, Seat } from "./room.ts";
 import {
     type ClientMessage,
     type ErrorCode,
@@ -35,6 +35,18 @@ function wrap(ws: WebSocket): Conn {
 /** Send one message to every connected player in the room (not the host). */
 function sendToPlayers(room: Room, msg: ServerMessage) {
     for (const seat of room.ConnectedPlayers()) seat.conn.send(msg);
+}
+
+/**
+ * Replay the host's retained messages to a player who just (re)joined, right after
+ * `joined`: first the room-wide one, then (rejoin only) the one kept for their seat.
+ */
+function sendCatchUp(room: Room, seat: Seat, conn: Conn) {
+    const replay = (r: Retained | null) => {
+        if (r) conn.send({ t: "msg", from: "host", d: r.d, catchUp: true, ageMs: Math.max(0, Date.now() - r.at) });
+    };
+    replay(room.getRetained());
+    replay(seat.retained);
 }
 
 /**
@@ -98,6 +110,7 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
                 oldConn?.close(CloseCode.Replaced, "replaced"); // e.g. the same game open in a second tab
                 identity = { kind: "player", room, playerId: seat.playerId };
                 conn.send({ t: "joined", room: room.getCode(), playerId: seat.playerId, name: seat.name, rejoined: true });
+                sendCatchUp(room, seat, conn);
                 room.getHost()?.send({ t: "player_rejoined", playerId: seat.playerId, name: seat.name });
                 log.info("player rejoined", { ...who(), name: seat.name, replacedOpenSocket: oldConn !== null });
                 return;
@@ -111,21 +124,29 @@ export function handleConnection(ws: WebSocket, rooms: Rooms, timings: Timings, 
         const { seat } = result;
         identity = { kind: "player", room, playerId: seat.playerId };
         conn.send({ t: "joined", room: room.getCode(), playerId: seat.playerId, name: seat.name, rejoined: false });
+        sendCatchUp(room, seat, conn);
         room.getHost()?.send({ t: "player_joined", playerId: seat.playerId, name: seat.name });
         log.info("player joined", { ...who(), name: seat.name });
     }
 
     function send(msg: MsgOf<"send">) {
         if (identity.kind === "none") return fail("not_in_room");
+        if (msg.retain && identity.kind !== "host") return fail("forbidden");
         const route = resolveTargets(identity.room, identity, msg.to);
         if (!route.ok) return fail(route.code);
+
+        // Remember it for late arrivals. The route already proved a playerId target is a real seat.
+        if (msg.retain) {
+            if (msg.to === "players" || msg.to === "all") identity.room.setRetained(msg.d);
+            else identity.room.setSeatRetained(msg.to, msg.d);
+        }
 
         // `from` is decided here, from who this socket really is. Never from the client.
         const from = identity.kind === "host" ? "host" : identity.playerId;
         const out: ServerMessage = { t: "msg", from, d: msg.d };
         for (const target of route.conns) target.send(out);
         // The payload itself is never logged, only its type and how far it went.
-        log.debug("routed", { ...who(), to: msg.to, type: typeof msg.d.t === "string" ? msg.d.t : undefined, recipients: route.conns.length });
+        log.debug("routed", { ...who(), to: msg.to, type: typeof msg.d.t === "string" ? msg.d.t : undefined, recipients: route.conns.length, retain: msg.retain || undefined });
     }
 
     function grantBroadcast(msg: MsgOf<"grant_broadcast">) {

@@ -79,8 +79,8 @@ public class MenuController : MonoBehaviour
     private Label _createError;
     private Button _createButton;
 
-    // Host Lobby view elements
-    private VisualElement _lobbyCard;
+    // Host Lobby view elements (lobby card + QR panel side by side, join site below)
+    private VisualElement _lobbyView;
     private Label _roomCodeDisplay;
     private Label _lobbyTitle;
     private Label _lobbyDescription;
@@ -89,7 +89,9 @@ public class MenuController : MonoBehaviour
     private Button _backButton;
     private Button _startMatchButton;
     private VisualElement _roomQrBox;
-    private VisualElement _roomQr;
+    private VisualElement _roomQr;     // Rectangle 16 plate, tinted the picked hue
+    private VisualElement _roomQrCode; // white QR mask on top, tinted black or white to read on the plate
+    private VisualElement _roomJoinLink;
     private Label _roomJoinSite;
 
     // Join QR code, rebuilt only when the join link changes
@@ -102,6 +104,15 @@ public class MenuController : MonoBehaviour
     private readonly HashSet<Button> _focusedButtons = new();
 
     private Color _hue = Color.white;
+
+    // QR plate / ink colours as currently shown, eased toward the picked hue each frame.
+    // Time constants: ~95% of the way there after 3x (so ~0.35s for the plate)
+    private const float QrPlateFadeTime = 0.12f;
+    private const float QrInkFadeTime = 0.05f;
+    private Color _qrPlateShown = Color.white;
+    private Color _qrInkShown = Color.black;
+    private bool _qrColorsShown;
+
     private bool _creating;
     private bool _startingMatch;
     private bool _inLobby;
@@ -152,7 +163,7 @@ public class MenuController : MonoBehaviour
         _createError = _root.Q<Label>("error");
         _createButton = _root.Q<Button>("create-game") ?? _root.Q<Button>("join");
 
-        _lobbyCard = _root.Q<VisualElement>("lobby-card");
+        _lobbyView = _root.Q<VisualElement>("lobby-view");
         _roomCodeDisplay = _root.Q<Label>("room-code-display");
         _lobbyTitle = _root.Q<Label>("lobby-title");
         _lobbyDescription = _root.Q<Label>("lobby-description");
@@ -162,6 +173,8 @@ public class MenuController : MonoBehaviour
         _startMatchButton = _root.Q<Button>("start-match");
         _roomQrBox = _root.Q<VisualElement>("room-qr-box");
         _roomQr = _root.Q<VisualElement>("room-qr");
+        _roomQrCode = _root.Q<VisualElement>("room-qr-code");
+        _roomJoinLink = _root.Q<VisualElement>("room-join-link");
         _roomJoinSite = _root.Q<Label>("room-join-site");
         _roomQrUrl = null; // fresh elements: apply the QR again on the next refresh
 
@@ -224,6 +237,54 @@ public class MenuController : MonoBehaviour
 
         SyncCenterCardWorldBoundsToStage();
         SyncCharacterLabelsToWorldPositions();
+        UpdateQrColors();
+    }
+
+    /// <summary>
+    /// Eases the QR plate toward the picked hue (around the colour wheel, so red > blue passes
+    /// through magenta rather than grey), and the ink toward whichever of black/white reads on
+    /// the plate as currently shown, so it flips exactly when the plate crosses over.
+    /// </summary>
+    private void UpdateQrColors()
+    {
+        if (_roomQr == null && _roomQrCode == null)
+            return;
+
+        if (!_qrColorsShown)
+        {
+            // First frame: start on the right colours instead of fading in from white
+            _qrPlateShown = _hue;
+            _qrInkShown = QrCode.InkFor(_hue);
+            _qrColorsShown = true;
+        }
+        else
+        {
+            float dt = Time.unscaledDeltaTime;
+            _qrPlateShown = LerpAroundHue(_qrPlateShown, _hue, 1f - Mathf.Exp(-dt / QrPlateFadeTime));
+            _qrInkShown = Color.Lerp(_qrInkShown, QrCode.InkFor(_qrPlateShown), 1f - Mathf.Exp(-dt / QrInkFadeTime));
+        }
+
+        if (_roomQr != null)
+            _roomQr.style.unityBackgroundImageTintColor = _qrPlateShown;
+        if (_roomQrCode != null)
+            _roomQrCode.style.unityBackgroundImageTintColor = _qrInkShown;
+    }
+
+    /// <summary>Lerps in HSV, taking the short way round the hue wheel.</summary>
+    private static Color LerpAroundHue(Color from, Color to, float t)
+    {
+        Color.RGBToHSV(from, out float h0, out float s0, out float v0);
+        Color.RGBToHSV(to, out float h1, out float s1, out float v1);
+
+        // White/greys have no real hue: borrow the other end's so they fade in place
+        // instead of sweeping in from red
+        if (s0 < 0.01f)
+            h0 = h1;
+        if (s1 < 0.01f)
+            h1 = h0;
+
+        float h = h0 + Mathf.DeltaAngle(h0 * 360f, h1 * 360f) / 360f * t;
+        return Color.HSVToRGB(Mathf.Repeat(h, 1f), Mathf.Lerp(s0, s1, t), Mathf.Lerp(v0, v1, t));
     }
 
     #region Create Game & Lobby Flow
@@ -380,7 +441,7 @@ public class MenuController : MonoBehaviour
 
         _column?.EnableInClassList("menu-column--lobby", inLobby);
         _createCard?.EnableInClassList("is-hidden", inLobby);
-        _lobbyCard?.EnableInClassList("is-hidden", !inLobby);
+        _lobbyView?.EnableInClassList("is-hidden", !inLobby);
 
         if (_title != null)
             _title.OverlapAnimate = inLobby;
@@ -548,8 +609,9 @@ public class MenuController : MonoBehaviour
     }
 
     /// <summary>
-    /// Shows the relay room's join link as a QR code, with the site's address under the
-    /// room code. Hidden when there's no real room (no relay, or between rooms).
+    /// Shows the relay room's join link as a QR code in its own panel beside the lobby card,
+    /// with the site's address in large text under both panels. Hidden when there's no real
+    /// room (no relay, or between rooms), leaving the lobby card alone in a narrower column.
     /// Returns true if the QR code is showing.
     /// </summary>
     private bool RefreshJoinQr()
@@ -569,7 +631,7 @@ public class MenuController : MonoBehaviour
             {
                 try
                 {
-                    _roomQrTexture = QrCode.CreateTexture(url);
+                    _roomQrTexture = QrCode.CreateMaskTexture(url);
                 }
                 catch (Exception e)
                 {
@@ -577,9 +639,9 @@ public class MenuController : MonoBehaviour
                 }
             }
 
-            if (_roomQr != null)
+            if (_roomQrCode != null)
             {
-                _roomQr.style.backgroundImage = _roomQrTexture != null
+                _roomQrCode.style.backgroundImage = _roomQrTexture != null
                     ? new StyleBackground(_roomQrTexture)
                     : new StyleBackground(StyleKeyword.None);
             }
@@ -594,7 +656,11 @@ public class MenuController : MonoBehaviour
 
         bool shown = _roomQrTexture != null;
         _roomQrBox?.EnableInClassList("is-hidden", !shown);
-        _roomJoinSite?.EnableInClassList("is-hidden", !shown || string.IsNullOrEmpty(_roomJoinSite.text));
+        _roomJoinLink?.EnableInClassList("is-hidden",
+            !shown || _roomJoinSite == null || string.IsNullOrEmpty(_roomJoinSite.text));
+
+        // Widen the lobby column to fit the QR panel; the cube ring is placed around the column's bounds
+        _column?.EnableInClassList("menu-column--lobby-qr", shown);
         return shown;
     }
 
@@ -838,7 +904,13 @@ public class MenuController : MonoBehaviour
             return;
 
         Rect panelRect = _root.worldBound;
+
+        // The column wraps the whole lobby view (lobby card + QR panel + join site below),
+        // widened by menu-column--lobby-qr, so its bounds keep the cube ring clear of all of it.
+        // A long join site can overflow the column sideways (no wrapping), so include it too.
         Rect colRect = _column.worldBound;
+        if (_inLobby && _roomJoinLink != null && _roomJoinLink.resolvedStyle.display == DisplayStyle.Flex)
+            colRect = Union(colRect, _roomJoinLink.worldBound);
 
         if (panelRect.width < 1f || panelRect.height < 1f || colRect.width < 1f || colRect.height < 1f)
             return;
@@ -860,6 +932,19 @@ public class MenuController : MonoBehaviour
         );
 
         colorStage.SetCenterCardWorldBounds(worldCenter, worldHalfExtents);
+    }
+
+    private static Rect Union(Rect a, Rect b)
+    {
+        if (b.width < 1f || b.height < 1f || float.IsNaN(b.width) || float.IsNaN(b.height))
+            return a;
+
+        return Rect.MinMaxRect(
+            Mathf.Min(a.xMin, b.xMin),
+            Mathf.Min(a.yMin, b.yMin),
+            Mathf.Max(a.xMax, b.xMax),
+            Mathf.Max(a.yMax, b.yMax)
+        );
     }
 
     private void SyncCharacterLabelsToWorldPositions()
@@ -939,7 +1024,7 @@ public class MenuController : MonoBehaviour
             _lobbyDescription.text = totalJoined > 0
                 ? "Press START MATCH when everyone is ready"
                 : hasJoinQr
-                    ? "Scan the QR code with your phone, or enter the code at the site above"
+                    ? "Scan the QR code with your phone, or enter this code at the site below"
                     : "Enter the 4-letter code on your device to join";
         }
 
@@ -1121,6 +1206,9 @@ public class MenuController : MonoBehaviour
 
         if (_title != null)
             _title.BaseColor = hue;
+
+        // The QR plate and ink fade to the new hue in UpdateQrColors (black ink on warm/bright
+        // hues, white on deep ones like blue and violet)
 
         if (_createError != null)
             _createError.style.color = ErrorColor;

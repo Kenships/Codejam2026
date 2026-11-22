@@ -200,3 +200,27 @@ describe("Room.playerList", () => {
         ]);
     });
 });
+
+describe("Room retained messages", () => {
+    test("room-wide slot keeps the latest message; {} clears it", () => {
+        const room = newRoom();
+        assert.equal(room.getRetained(), null);
+        room.setRetained({ t: "state", phase: "drawing" });
+        room.setRetained({ t: "state", phase: "playing" });
+        assert.deepEqual(room.getRetained()?.d, { t: "state", phase: "playing" });
+        room.setRetained({});
+        assert.equal(room.getRetained(), null);
+    });
+
+    test("seat slot is per player and false for an unknown seat", () => {
+        const room = newRoom();
+        const a = join(room, "A");
+        const b = join(room, "B");
+        assert.equal(room.setSeatRetained(a.playerId, { t: "snapshot", hex: "#FF0000" }), true);
+        assert.deepEqual(room.getSeat(a.playerId)?.retained?.d, { t: "snapshot", hex: "#FF0000" });
+        assert.equal(room.getSeat(b.playerId)?.retained, null);
+        assert.equal(room.setSeatRetained("p_nobody", { t: "x" }), false);
+        room.setSeatRetained(a.playerId, {});
+        assert.equal(room.getSeat(a.playerId)?.retained, null);
+    });
+});

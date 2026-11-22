@@ -75,6 +75,14 @@ describe("parseClientMessage: message types", () => {
         assert.equal(fails('{"t":"send","to":"host"}'), "bad_message");
     });
 
+    test("send.retain: true is kept, false/absent is dropped, non-boolean rejected", () => {
+        assert.deepEqual(ok('{"t":"send","to":"players","d":{"t":"state"},"retain":true}'), {
+            t: "send", to: "players", d: { t: "state" }, retain: true,
+        });
+        assert.equal("retain" in ok('{"t":"send","to":"players","d":{},"retain":false}'), false);
+        assert.equal(fails('{"t":"send","to":"players","d":{},"retain":"yes"}'), "bad_message");
+    });
+
     test("grant_broadcast accepts a string or explicit null only", () => {
         assert.deepEqual(ok('{"t":"grant_broadcast","playerId":"p1"}'), { t: "grant_broadcast", playerId: "p1" });
         assert.deepEqual(ok('{"t":"grant_broadcast","playerId":null}'), { t: "grant_broadcast", playerId: null });

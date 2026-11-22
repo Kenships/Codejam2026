@@ -2,35 +2,45 @@
     <Style src="project://database/Assets/UI/Guessing/GuessingPhase.uss"/>
     <ui:VisualElement name="guessing-root" picking-mode="Ignore" class="guessing-root">
 
-        <!-- Left Docked Artist + Black & White Drawing Panel (Leaves Stage Open for ColorPhysics Cubes) -->
-        <ui:VisualElement name="guessing-sidebar" class="guessing-sidebar">
-            <ui:VisualElement name="sidebar-top-row" class="sidebar-top-row">
-                <ui:Label name="round-label" text="DRAWING 1 / 4" class="sidebar-round-label"/>
-                <ui:VisualElement name="timer-badge" class="sidebar-timer-badge">
-                    <ui:Label name="guess-timer" text="30s" class="sidebar-timer-text"/>
+        <!-- Artist + Black & White Drawing Panel. Spans the screen until the first guess lands, then
+             docks left (width set by GuessingPhaseController) to leave the stage open for ColorPhysics cubes -->
+        <ui:VisualElement name="guessing-layout" picking-mode="Ignore" class="guessing-layout">
+            <ui:VisualElement name="guessing-sidebar" class="guessing-sidebar">
+                <ui:VisualElement name="sidebar-top-row" class="sidebar-top-row">
+                    <ui:VisualElement name="artist-row" class="artist-row">
+                        <ui:VisualElement name="artist-cube" class="artist-cube">
+                            <ui:VisualElement name="artist-pfp" class="artist-pfp"/>
+                        </ui:VisualElement>
+                        <ui:VisualElement class="artist-text-col">
+                            <ui:Label text="ARTIST" class="artist-kicker"/>
+                            <ui:Label name="artist-name" text="PRISM" class="artist-name"/>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="sidebar-round-col">
+                        <ui:Label name="round-label" text="DRAWING 1 / 4" class="sidebar-round-label"/>
+                        <ui:VisualElement name="timer-badge" class="sidebar-timer-badge">
+                            <ui:Label name="guess-timer" text="30s" class="sidebar-timer-text"/>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                 </ui:VisualElement>
-            </ui:VisualElement>
 
-            <ui:VisualElement name="artist-row" class="artist-row">
-                <ui:VisualElement name="artist-cube" class="artist-cube">
-                    <ui:VisualElement name="artist-pfp" class="artist-pfp"/>
+                <!-- Free space the drawing is aspect-fitted and centred in (viewport sized from code) -->
+                <ui:VisualElement name="drawing-area" picking-mode="Ignore" class="drawing-area">
+                    <ui:VisualElement name="drawing-viewport" class="drawing-viewport">
+                        <ui:VisualElement name="drawing-image" class="drawing-image"/>
+                    </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:VisualElement class="artist-text-col">
-                    <ui:Label text="ARTIST" class="artist-kicker"/>
-                    <ui:Label name="artist-name" text="PRISM" class="artist-name"/>
+
+                <ui:Label name="drawing-prompt" text="&quot;Golden hour sunset&quot;" class="drawing-prompt"/>
+
+                <ui:VisualElement name="guess-footer" class="guess-footer">
+                    <ui:Label name="guess-count" text="0 / 3 GUESSED" class="guess-count"/>
+                    <ui:VisualElement name="guess-test-row" class="guess-test-row">
+                        <ui:Button name="simulate-guess" text="+ SIMULATE GUESS" class="guessing-button"/>
+                        <ui:Button name="merge-now" text="MERGE NOW" class="guessing-button"/>
+                    </ui:VisualElement>
                 </ui:VisualElement>
-            </ui:VisualElement>
-
-            <ui:VisualElement name="drawing-viewport" class="drawing-viewport">
-                <ui:VisualElement name="drawing-image" class="drawing-image"/>
-            </ui:VisualElement>
-
-            <ui:Label name="drawing-prompt" text="&quot;Golden hour sunset&quot;" class="drawing-prompt"/>
-            <ui:Label name="guess-count" text="0 / 3 GUESSED" class="guess-count"/>
-
-            <ui:VisualElement name="guess-test-row" class="guess-test-row">
-                <ui:Button name="simulate-guess" text="+ SIMULATE GUESS" class="guessing-button"/>
-                <ui:Button name="merge-now" text="MERGE NOW" class="guessing-button"/>
             </ui:VisualElement>
         </ui:VisualElement>
 

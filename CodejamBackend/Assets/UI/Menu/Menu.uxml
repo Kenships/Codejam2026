@@ -21,34 +21,47 @@
                 </ui:VisualElement>
             </ui:VisualElement>
 
-            <!-- Host Lobby Join Screen (Compact Center Card; Players Populate Around It Clockwise) -->
-            <ui:VisualElement name="lobby-card" class="card card--lobby hue-border is-hidden">
-                <ui:VisualElement name="lobby-header-row" class="lobby-header-row">
-                    <ui:Label name="lobby-title" text="WAITING FOR PLAYERS..." class="lobby-title hue-text"/>
-                    <ui:VisualElement name="player-count-badge" class="lobby-count-badge hue-border">
-                        <ui:Label name="player-count" text="0 / 12" class="lobby-count-text hue-text"/>
+            <!-- Host Lobby Join Screen (Lobby Card + QR Panel, Join Site Below; Players Populate Around It Clockwise) -->
+            <ui:VisualElement name="lobby-view" class="lobby-view is-hidden">
+                <ui:VisualElement name="lobby-panels" class="lobby-panels">
+                    <ui:VisualElement name="lobby-card" class="card card--lobby hue-border">
+                        <ui:VisualElement name="lobby-header-row" class="lobby-header-row">
+                            <ui:Label name="lobby-title" text="WAITING FOR PLAYERS..." class="lobby-title hue-text"/>
+                            <ui:VisualElement name="player-count-badge" class="lobby-count-badge hue-border">
+                                <ui:Label name="player-count" text="0 / 12" class="lobby-count-text hue-text"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement name="room-code-box" class="lobby-code-box hue-border">
+                            <ui:VisualElement name="room-code-text" class="lobby-code-text">
+                                <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
+                                <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:Label name="lobby-description" text="Enter the 4-letter code on your device to join" class="lobby-description hue-dim-text"/>
+                        <ui:Label name="lobby-error" class="card-error"/>
+
+                        <ui:VisualElement name="lobby-footer" class="card-footer card-footer--lobby">
+                            <ui:Button name="back-button" text="BACK" class="menu-button menu-button--secondary"/>
+                            <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary"/>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <!-- QR panel: filled from RelayClient.JoinUrl; hidden until there's a real room -->
+                    <ui:VisualElement name="room-qr-box" class="card card--qr hue-border is-hidden">
+                        <ui:Label name="room-qr-label" text="SCAN TO JOIN" class="qr-card-title hue-text"/>
+                        <!-- Plate (Rectangle 16, tinted the picked hue) with the QR mask layered on top (black or white ink) -->
+                        <ui:VisualElement name="room-qr" class="lobby-qr">
+                            <ui:VisualElement name="room-qr-code" picking-mode="Ignore" class="lobby-qr-code"/>
+                        </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
 
-                <ui:VisualElement name="room-code-box" class="lobby-code-box hue-border">
-                    <ui:VisualElement name="room-code-text" class="lobby-code-text">
-                        <ui:Label name="room-code-label" text="ROOM CODE" class="lobby-code-label hue-dim-text"/>
-                        <ui:Label name="room-code-display" text="KXQM" class="lobby-code-value hue-text"/>
-                        <ui:Label name="room-join-site" class="lobby-join-site hue-dim-text is-hidden"/>
-                    </ui:VisualElement>
-                    <!-- Filled from RelayClient.JoinUrl; hidden until there's a real room -->
-                    <ui:VisualElement name="room-qr-box" class="lobby-qr-box is-hidden">
-                        <ui:VisualElement name="room-qr" class="lobby-qr"/>
-                        <ui:Label name="room-qr-label" text="SCAN TO JOIN" class="lobby-qr-label hue-dim-text"/>
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <ui:Label name="lobby-description" text="Enter the 4-letter code on your device to join" class="lobby-description hue-dim-text"/>
-                <ui:Label name="lobby-error" class="card-error"/>
-
-                <ui:VisualElement name="lobby-footer" class="card-footer card-footer--lobby">
-                    <ui:Button name="back-button" text="BACK" class="menu-button menu-button--secondary"/>
-                    <ui:Button name="start-match" text="START MATCH" class="menu-button menu-button--primary"/>
+                <!-- Join site (host of the join link), centred under both panels; hidden with the QR panel -->
+                <ui:VisualElement name="room-join-link" class="lobby-join-link is-hidden">
+                    <ui:Label name="room-join-prefix" text="OR VISIT" class="lobby-join-prefix hue-dim-text"/>
+                    <ui:Label name="room-join-site" class="lobby-join-site hue-text"/>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

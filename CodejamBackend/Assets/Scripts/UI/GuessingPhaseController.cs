@@ -8,9 +8,11 @@ using UnityEngine.UIElements;
 
 /// <summary>
 /// Drives the Guessing, Merge Reveal, and Game Finished overlays in GameScene:
-/// - Guessing: docked left sidebar showing the artist's icon, their black-and-white drawing
-///   (or stand-in B&W drawing icon), clue prompt, 30s timer, and guess progress while
-///   ColorPhysics renders all guessed colour cubes on the open stage.
+/// - Guessing: card showing the artist's icon, their black-and-white drawing (or stand-in B&W
+///   drawing icon) aspect-fitted as large as the card allows, clue prompt, 30s timer, and guess
+///   progress. The card spans the screen until the first guess, then docks left so ColorPhysics
+///   can render all guessed colour cubes on the open stage (the camera's AreaCameraZoom is
+///   pointed at that stage).
 /// - Reveal: tints the drawing with the True Hue and shows the bottom Reveal Banner comparing
 ///   the room's merged colour vs the artist's True Hue.
 /// - Finished: full-screen rainbow-shifting completion screen once all drawings are done.
@@ -22,6 +24,16 @@ public class GuessingPhaseController : MonoBehaviour
     [SerializeField] private bool showSimulateControls = true;
     [SerializeField, Min(1f)] private float finishedRainbowDegPerSec = 24f;
 
+    [Title("Guess Stage")]
+    // Camera zoom that frames the guessed cubes (defaults to the one in the scene)
+    [SerializeField] private AreaCameraZoom stageZoom;
+
+    // Sidebar width once guesses arrive, as a % of the layout's width (before that it spans it all)
+    [SerializeField, Range(20f, 100f)] private float dockedSidebarPercent = 44f;
+
+    // Gap (panel px) kept between the docked sidebar / screen edges and the guessed cubes
+    [SerializeField, Min(0f)] private float stagePadding = 40f;
+
     public event Action SimulateGuessRequested;
     public event Action MergeNowRequested;
     public event Action NextDrawingRequested;
@@ -29,12 +41,14 @@ public class GuessingPhaseController : MonoBehaviour
     public event Action BackToMenuRequested;
 
     private VisualElement _root;
+    private VisualElement _layout;
     private VisualElement _sidebar;
     private Label _roundLabel;
     private Label _timerLabel;
     private VisualElement _artistCube;
     private VisualElement _artistPfp;
     private Label _artistName;
+    private VisualElement _drawingArea;
     private VisualElement _drawingViewport;
     private VisualElement _drawingImage;
     private Label _promptLabel;
@@ -67,8 +81,10 @@ public class GuessingPhaseController : MonoBehaviour
 
     private Color _accentColor = Color.white;
     private float _finishedHueDeg;
+    private float _drawingAspect = 1f;
     private bool _isVisible;
     private bool _isFinishedVisible;
+    private bool _isSidebarDocked;
 
     private void Reset() => document = GetComponent<UIDocument>();
 
@@ -87,12 +103,14 @@ public class GuessingPhaseController : MonoBehaviour
         if (_root == null)
             return;
 
+        _layout = _root.Q<VisualElement>("guessing-layout");
         _sidebar = _root.Q<VisualElement>("guessing-sidebar");
         _roundLabel = _root.Q<Label>("round-label");
         _timerLabel = _root.Q<Label>("guess-timer");
         _artistCube = _root.Q<VisualElement>("artist-cube");
         _artistPfp = _root.Q<VisualElement>("artist-pfp");
         _artistName = _root.Q<Label>("artist-name");
+        _drawingArea = _root.Q<VisualElement>("drawing-area");
         _drawingViewport = _root.Q<VisualElement>("drawing-viewport");
         _drawingImage = _root.Q<VisualElement>("drawing-image");
         _promptLabel = _root.Q<Label>("drawing-prompt");
@@ -126,11 +144,22 @@ public class GuessingPhaseController : MonoBehaviour
         RegisterButton(_playAgainButton, () => PlayAgainRequested?.Invoke());
         RegisterButton(_backToMenuButton, () => BackToMenuRequested?.Invoke());
 
+        // Refit the drawing whenever its free space changes (sidebar docking, screen resize),
+        // and re-aim the camera at the open stage when the layout itself changes size
+        _drawingArea?.RegisterCallback<GeometryChangedEvent>(OnDrawingAreaGeometryChanged);
+        _layout?.RegisterCallback<GeometryChangedEvent>(OnLayoutGeometryChanged);
+
+        SetSidebarDocked(_isSidebarDocked);
         SetVisible(_isVisible);
     }
 
     private void OnDisable()
     {
+        _drawingArea?.UnregisterCallback<GeometryChangedEvent>(OnDrawingAreaGeometryChanged);
+        _layout?.UnregisterCallback<GeometryChangedEvent>(OnLayoutGeometryChanged);
+        if (stageZoom != null)
+            stageZoom.ClearFocusRect();
+
         UnregisterAllButtons();
         _hoveredButtons.Clear();
         _focusedButtons.Clear();
@@ -178,6 +207,8 @@ public class GuessingPhaseController : MonoBehaviour
                 _finishedOverlay.style.display = DisplayStyle.None;
             }
         }
+
+        UpdateStageFocus();
     }
 
     /// <summary>
@@ -244,10 +275,13 @@ public class GuessingPhaseController : MonoBehaviour
 
         if (_drawingImage != null && tex != null)
         {
+            // Scale-to-fit comes from the USS; the viewport itself is aspect-fitted in FitDrawingToArea
             _drawingImage.style.backgroundImage = new StyleBackground(tex);
-            _drawingImage.style.backgroundSize = new BackgroundSize(Length.Percent(100), Length.Percent(100));
             _drawingImage.style.unityBackgroundImageTintColor = Color.white; // Pure B&W during guessing!
         }
+
+        _drawingAspect = tex != null && tex.height > 0 ? (float)tex.width / tex.height : 1f;
+        FitDrawingToArea();
 
         if (_drawingViewport != null)
             SetBorderColor(_drawingViewport, Color.white);
@@ -271,6 +305,9 @@ public class GuessingPhaseController : MonoBehaviour
 
     public void SetGuessProgress(int guessedCount, int totalGuessers)
     {
+        // First guess in: dock the card left so the guessed cubes get the open stage
+        SetSidebarDocked(guessedCount > 0);
+
         if (_guessCountLabel != null)
             _guessCountLabel.text = $"{guessedCount} / {Mathf.Max(1, totalGuessers)} GUESSED";
 
@@ -285,6 +322,9 @@ public class GuessingPhaseController : MonoBehaviour
     /// <summary>Updates the sidebar while ColorPhysics is actively merging all guessed cubes.</summary>
     public void ShowMergingState()
     {
+        // Even with no guesses a fallback cube is spawned, so make room for it
+        SetSidebarDocked(true);
+
         if (_testRow != null)
             _testRow.style.display = DisplayStyle.None;
 
@@ -416,6 +456,133 @@ public class GuessingPhaseController : MonoBehaviour
         RefreshButton(_playAgainButton);
         RefreshButton(_backToMenuButton);
     }
+
+    #region Drawing & Stage Layout
+
+    /// <summary>
+    /// Docks the card to the left (guesses are in) or lets it span the screen again. The USS
+    /// width transition animates it, and the drawing refits every frame via GeometryChangedEvent.
+    /// </summary>
+    private void SetSidebarDocked(bool docked)
+    {
+        _isSidebarDocked = docked;
+
+        if (_sidebar != null)
+        {
+            _sidebar.style.width = docked
+                ? new StyleLength(Length.Percent(dockedSidebarPercent))
+                : new StyleLength(StyleKeyword.Null);
+        }
+
+        UpdateStageFocus();
+    }
+
+    private void OnDrawingAreaGeometryChanged(GeometryChangedEvent evt) => FitDrawingToArea();
+
+    private void OnLayoutGeometryChanged(GeometryChangedEvent evt) => UpdateStageFocus();
+
+    /// <summary>
+    /// Sizes the bordered drawing viewport to the largest rect with the drawing's aspect ratio
+    /// that fits the drawing area, centred in it (no stretching or cropping).
+    /// </summary>
+    private void FitDrawingToArea()
+    {
+        if (_drawingArea == null || _drawingViewport == null)
+            return;
+
+        Rect area = _drawingArea.contentRect;
+        if (!IsUsableRect(area))
+            return;
+
+        IResolvedStyle viewportStyle = _drawingViewport.resolvedStyle;
+        float borderX = viewportStyle.borderLeftWidth + viewportStyle.borderRightWidth;
+        float borderY = viewportStyle.borderTopWidth + viewportStyle.borderBottomWidth;
+
+        float aspect = _drawingAspect > 0f ? _drawingAspect : 1f;
+        float innerWidth = Mathf.Max(0f, area.width - borderX);
+        float innerHeight = Mathf.Max(0f, area.height - borderY);
+        float fitWidth = Mathf.Min(innerWidth, innerHeight * aspect);
+        float fitHeight = fitWidth / aspect;
+
+        float width = Mathf.Floor(fitWidth + borderX);
+        float height = Mathf.Floor(fitHeight + borderY);
+
+        _drawingViewport.style.width = width;
+        _drawingViewport.style.height = height;
+        _drawingViewport.style.left = area.x + Mathf.Round((area.width - width) * 0.5f);
+        _drawingViewport.style.top = area.y + Mathf.Round((area.height - height) * 0.5f);
+    }
+
+    private AreaCameraZoom GetStageZoom()
+    {
+        if (stageZoom == null)
+            stageZoom = FindAnyObjectByType<AreaCameraZoom>();
+
+        return stageZoom;
+    }
+
+    /// <summary>
+    /// Points the camera's AreaCameraZoom at the open stage right of the docked card, so the
+    /// guessed cubes are framed in the space the drawing leaves free instead of behind it.
+    /// </summary>
+    private void UpdateStageFocus()
+    {
+        AreaCameraZoom zoom = GetStageZoom();
+        if (zoom == null)
+            return;
+
+        bool framesStage = _isVisible && !_isFinishedVisible && _isSidebarDocked;
+        if (framesStage && TryGetStageViewportRect(out Rect viewportRect))
+            zoom.SetFocusRect(viewportRect);
+        else
+            zoom.ClearFocusRect();
+    }
+
+    /// <summary>
+    /// The open stage right of the docked card, in camera viewport coordinates (0-1, y up).
+    /// Uses the docked width rather than the card's current one, so the camera heads straight
+    /// for its final framing while the card's width transition is still running.
+    /// </summary>
+    private bool TryGetStageViewportRect(out Rect viewportRect)
+    {
+        viewportRect = default;
+        if (_layout == null || _root?.panel == null)
+            return false;
+
+        Rect screen = _root.panel.visualTree.worldBound;
+        Rect layout = _layout.worldBound;
+        if (!IsUsableRect(screen) || !IsUsableRect(layout))
+            return false;
+
+        // The card's % width is relative to the layout's content box
+        IResolvedStyle layoutStyle = _layout.resolvedStyle;
+        float contentLeft = layout.xMin + layoutStyle.borderLeftWidth + layoutStyle.paddingLeft;
+        float contentWidth = layout.width
+            - layoutStyle.borderLeftWidth - layoutStyle.paddingLeft
+            - layoutStyle.paddingRight - layoutStyle.borderRightWidth;
+        float sidebarRight = contentLeft + contentWidth * dockedSidebarPercent / 100f;
+
+        float xMin = sidebarRight + stagePadding;
+        float xMax = screen.xMax - stagePadding;
+        float yMin = screen.yMin + stagePadding;
+        float yMax = screen.yMax - stagePadding;
+        if (xMax - xMin < 1f || yMax - yMin < 1f)
+            return false;
+
+        // Panel space is y-down; viewport space has y up
+        viewportRect = Rect.MinMaxRect(
+            (xMin - screen.xMin) / screen.width,
+            (screen.yMax - yMax) / screen.height,
+            (xMax - screen.xMin) / screen.width,
+            (screen.yMax - yMin) / screen.height
+        );
+        return true;
+    }
+
+    private static bool IsUsableRect(Rect rect) =>
+        !float.IsNaN(rect.width) && !float.IsNaN(rect.height) && rect.width > 0f && rect.height > 0f;
+
+    #endregion
 
     private static int ComputeHueMatchPercent(Color a, Color b)
     {

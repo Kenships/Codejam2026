@@ -383,3 +383,104 @@ describe("host disconnect / resume", () => {
         assert.equal((await h.expect("error")).code, "room_not_found");
     });
 });
+
+describe("retained catch-up messages", () => {
+    test("a player joining mid-game gets the room's retained message right after joined", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "send", to: "players", d: { t: "state", phase: "drawing", round: 2 }, retain: true });
+        const live = await a.client.expect("msg");
+        assert.equal("catchUp" in live, false, "live sends are not marked catchUp");
+
+        const late = await connect(relay.port);
+        late.send({ t: "join", room, name: "Late" });
+        await late.expect("joined");
+        const caught = await late.expect("msg");
+        assert.equal(caught.from, "host");
+        assert.equal(caught.catchUp, true);
+        assert.deepEqual(caught.d, { t: "state", phase: "drawing", round: 2 });
+        assert.ok(typeof caught.ageMs === "number" && caught.ageMs >= 0, "catch-up carries ageMs");
+        await host.expect("player_joined");
+    });
+
+    test("ageMs grows with how long ago the host sent it", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "send", to: "players", d: { t: "state", remainingMs: 60000 }, retain: true });
+        await a.client.expect("msg");
+        await new Promise((r) => setTimeout(r, 150));
+
+        const late = await connect(relay.port);
+        late.send({ t: "join", room, name: "Late" });
+        await late.expect("joined");
+        const ageMs = (await late.expect("msg")).ageMs ?? -1;
+        assert.ok(ageMs >= 140 && ageMs < 1000, `ageMs was ${ageMs}`);
+    });
+
+    test("only the newest retained message is kept, and d:{} clears it", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "send", to: "all", d: { t: "state", phase: "drawing" }, retain: true });
+        host.send({ t: "send", to: "all", d: { t: "state", phase: "playing" }, retain: true });
+        await a.client.expect("msg");
+        await a.client.expect("msg");
+
+        const b = await connect(relay.port);
+        b.send({ t: "join", room, name: "B" });
+        await b.expect("joined");
+        assert.deepEqual((await b.expect("msg")).d, { t: "state", phase: "playing" });
+        await b.expectSilence();
+
+        host.send({ t: "send", to: "players", d: {}, retain: true });
+        await host.expect("player_joined");
+        const c = await connect(relay.port);
+        c.send({ t: "join", room, name: "C" });
+        await c.expect("joined");
+        await c.expectSilence();
+    });
+
+    test("a rejoining player gets the room message, then their own seat message", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "send", to: "players", d: { t: "state", phase: "drawing" }, retain: true });
+        host.send({ t: "send", to: a.playerId, d: { t: "snapshot", target: "#FF5733" }, retain: true });
+        await a.client.expect("msg");
+        await a.client.expect("msg");
+
+        a.client.close();
+        await host.expect("player_disconnected");
+        const again = await connect(relay.port);
+        again.send({ t: "join", room, name: "A", playerId: a.playerId });
+        await again.expect("joined");
+        assert.deepEqual((await again.expect("msg")).d, { t: "state", phase: "drawing" });
+        assert.deepEqual((await again.expect("msg")).d, { t: "snapshot", target: "#FF5733" });
+        await again.expectSilence();
+    });
+
+    test("a seat's retained message is never shown to anyone else", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "send", to: a.playerId, d: { t: "your_target", hex: "#FF5733" }, retain: true });
+        await a.client.expect("msg");
+
+        const b = await connect(relay.port);
+        b.send({ t: "join", room, name: "B" });
+        await b.expect("joined");
+        await b.expectSilence();
+    });
+
+    test("players can't retain, even with the broadcast grant", async () => {
+        const { host, room, players: [a] } = await setupRoom(["A"]);
+        host.send({ t: "grant_broadcast", playerId: a.playerId });
+        a.client.send({ t: "send", to: "players", d: { t: "state" }, retain: true });
+        assert.equal((await a.client.expect("error")).code, "forbidden");
+        a.client.send({ t: "send", to: "host", d: { t: "guess" }, retain: true });
+        assert.equal((await a.client.expect("error")).code, "forbidden");
+
+        const b = await connect(relay.port);
+        b.send({ t: "join", room, name: "B" });
+        await b.expect("joined");
+        await b.expectSilence();
+    });
+
+    test("retaining for an unknown player is unknown_target and stores nothing", async () => {
+        const { host } = await setupRoom([]);
+        host.send({ t: "send", to: "p_nobody", d: { t: "x" }, retain: true });
+        assert.equal((await host.expect("error")).code, "unknown_target");
+    });
+});
