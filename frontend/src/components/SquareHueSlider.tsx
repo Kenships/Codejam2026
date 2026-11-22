@@ -59,7 +59,14 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
   }
 
   return (
-    <div ref={ref} className="relative" style={{ padding: thickness }}>
+    <div
+      ref={ref}
+      // No text selection / long-press menu / tap flash anywhere in the slider: on phones a held
+      // finger on the ring otherwise selects this wrapper and highlights the whole card.
+      className="relative select-none [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+      style={{ padding: thickness }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {/* soft neon glow behind the band */}
       <div className="pointer-events-none absolute inset-0 opacity-70 blur-md" style={ring} />
       <div
@@ -69,9 +76,10 @@ export function SquareHueSlider({ value, onChange, onHover, thickness = 8, child
         aria-valuemax={360}
         aria-valuenow={value === null ? undefined : Math.round(value)}
         tabIndex={0}
-        className="absolute inset-0 cursor-crosshair touch-none"
+        className="absolute inset-0 cursor-crosshair touch-none outline-none"
         style={ring}
         onPointerDown={(e) => {
+          e.preventDefault() // stops the press from starting a text selection
           e.currentTarget.setPointerCapture(e.pointerId)
           onChange(hueAt(e))
         }}
