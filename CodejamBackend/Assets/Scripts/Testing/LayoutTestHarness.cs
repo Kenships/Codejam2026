@@ -246,16 +246,23 @@ public class LayoutTestHarness : MonoBehaviour
         guessing.SetVisible(true);
         guessing.BeginGuessingRound(artist, drawingRecord, 0, artists.Count, guessers, 30f);
 
-        // Guesses trickle in, then the round ends: everyone's cubes spawn at once and merge
-        for (int i = 1; i <= guessers; i++)
+        // Guesses trickle in (each guesser takes a seat around the card), then the round ends:
+        // every guesser bursts into cubes of their guess and they all merge
+        List<(string playerId, Color guess)> guesses = new();
+        foreach (GameSessionData.SessionPlayer p in _players)
         {
-            guessing.SetGuessProgress(i, guessers);
+            if (p.playerId == artist.playerId)
+                continue;
+
+            guesses.Add((p.playerId, Color.HSVToRGB(Random.value, 1f, 1f)));
+            guessing.MarkPlayerGuessed(p);
+            guessing.SetGuessProgress(guesses.Count, guessers);
             if (stagger > 0f)
                 yield return new WaitForSeconds(stagger);
         }
 
         guessing.ShowMergingState();
-        game.GenerateAndSpawn(guessers);
+        game.BurstAndMerge(guesses);
         _routine = null;
     }
 
