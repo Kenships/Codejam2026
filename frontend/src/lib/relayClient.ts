@@ -321,6 +321,11 @@ class RelayClient {
                 h: savedPfp.height,
               })
             }
+            // ...and the saved prompt suggestion, so the host has it after a reconnect too
+            const savedSuggestion = useLoginStore.getState().promptSuggestion
+            if (savedSuggestion) {
+              this.send('host', { t: 'prompt_suggest', text: savedSuggestion })
+            }
             settleResolve(msg)
             break
           }

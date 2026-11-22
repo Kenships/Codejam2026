@@ -247,6 +247,7 @@ the phones use today, plus the **category pick** (new, marked ★). Unity owns t
 | `d.t` | Fields | Notes |
 |---|---|---|
 | `pfp_submit` | `image` (base64), `mime`, `compression`, `w`, `h` | Profile picture, lobby. Same format as `drawing_submit`. |
+| `prompt_suggest` | `text: string` (≤ 24 chars after trimming) | Optional, lobby. A category for **another** artist to draw. Sending again replaces it; `""` withdraws it. Phones re-send their saved one after `joined`. |
 | ★`category_pick` | `category: string` | One of the 4 from `your_target.categories`. Send once, before drawing. |
 | `stroke_batch` / `undo` / `clear` | — | Live canvas, to `"host"`. |
 | `drawing_submit` | `prompt`, `image`, `mime`, `compression`, `w`, `h` | ★ `prompt` = the picked category. The host trusts its own record of the pick, not this field. |
@@ -270,6 +271,15 @@ usually a few KB. Decoders sniff the gzip header (`1f 8b`) and the `TH1` magic r
 `mime`/`compression`, and still accept the old gzipped PNG/JPEG payloads (e.g. a profile picture
 saved by an older build). Reference code: `frontend/src/lib/drawingCodec.ts` and
 `CodejamBackend/Assets/Scripts/Networking/DrawingImageCodec.cs`.
+
+### Prompt suggestions (`prompt_suggest`)
+
+When drawing starts, Unity deals each suggestion from a player in the game into **exactly one**
+artist's 4 categories, never the suggester's own, spreading them out (the hand with the fewest
+suggestions takes the next). No suggested text is also dealt from the word bank to anyone else,
+and a hand never holds the same text twice. A suggestion is skipped for that game only if no
+other artist has room (e.g. the suggester is the only artist). Suggestions persist across Play
+Again and are dropped when the player leaves the room.
 
 ### ★ Category pick flow
 

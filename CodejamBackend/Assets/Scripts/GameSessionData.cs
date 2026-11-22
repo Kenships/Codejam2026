@@ -21,7 +21,7 @@ public static class GameSessionData
 
     // ---- Match settings (picked on the Create Game screen; kept for Play Again and the next lobby) ----
 
-    private static int _maxPlayers = MaxPlayersLimit;
+    private static int _maxPlayers = 12;
     private static int _artistCount = 4;
     private static int _drawingSeconds = 60;
     private static int _guessingSeconds = 30;
@@ -114,6 +114,26 @@ public static class GameSessionData
 
     public static List<SessionPlayer> Players { get; } = new();
     public static List<SubmittedDrawing> Drawings { get; } = new();
+
+    /// <summary>
+    /// Categories players suggested in the lobby (prompt_suggest), by player id. Survives
+    /// SetLobbySession and Play Again; a player's entry goes when they leave the room.
+    /// </summary>
+    public static Dictionary<string, string> PromptSuggestions { get; } = new();
+
+    /// <summary>Stores (or, for blank text, withdraws) a player's suggestion. Returns the cleaned text.</summary>
+    public static string SetPromptSuggestion(string playerId, string text)
+    {
+        if (string.IsNullOrEmpty(playerId))
+            return "";
+
+        string cleaned = CategoryWordBank.CleanSuggestion(text);
+        if (cleaned.Length == 0)
+            PromptSuggestions.Remove(playerId);
+        else
+            PromptSuggestions[playerId] = cleaned;
+        return cleaned;
+    }
 
     public static void SetLobbySession(string roomCode, IReadOnlyList<MenuController.LobbyPlayer> lobbyPlayers)
     {

@@ -1690,6 +1690,51 @@ public class ColorPhysics : MonoBehaviour
     }
 
     /// <summary>
+    /// Bursts one body per (color, radius) piece out of a point, all at
+    /// once: each starts a little way from <paramref name="origin"/> and
+    /// flies outward at up to <paramref name="speed"/> units/s, popping in
+    /// from small. Plays the merge effect and sound once for the burst.
+    /// </summary>
+    public void SpawnBurst(
+        Vector3 origin,
+        IReadOnlyList<(Color color, float radius)> pieces,
+        float speed,
+        float spread = 0.25f)
+    {
+        if (pieces == null || pieces.Count == 0)
+            return;
+
+        Vector3 right = transform.right;
+        Vector3 up = transform.up;
+        float dt = Time.fixedDeltaTime;
+
+        // Even spacing around the circle (with jitter) so pieces don't all fly the same way
+        float baseAngle = Random.Range(0f, Mathf.PI * 2f);
+
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            (Color color, float radius) = pieces[i];
+
+            float angle = baseAngle +
+                          (i + Random.Range(-0.3f, 0.3f)) * (Mathf.PI * 2f / pieces.Count);
+            Vector3 dir = right * Mathf.Cos(angle) + up * Mathf.Sin(angle);
+
+            ColorBody body = CreateBody(color, radius, origin + dir * (spread * Random.Range(0.5f, 1f)));
+            AddBody(body);
+
+            // Verlet velocity is CurrentPos - LastPos per step
+            body.LastPos = body.CurrentPos - dir * (speed * Random.Range(0.6f, 1f) * dt);
+
+            body.ScaleRadius(radius * 0.3f, radius, mergeSpawnDuration, overshoot: mergeSpawnOvershoot);
+
+            if (i == 0)
+                body.PlayMergeEffect();
+        }
+
+        PlaySound(mergeSound);
+    }
+
+    /// <summary>
     /// Instantiates a ColorBody from the prefab without adding it to the
     /// simulation (e.g. for display after the physics is done with it).
     /// </summary>
