@@ -154,14 +154,14 @@ MonoBehaviour:
   initialBodies: []
   colorBodyGap: 0.1
   constraintIterations: 1
-  verletDamping: 0.01
+  verletDamping: 1
   minVelocity: 0.001
   hsvSortStrength: 0.08
   clusterSpread: 1
   hueSeam: 0.5
   cohesionStrength: 0.005
-  centeringStrength: 0.05
-  waveEnabled: 1
+  centeringStrength: 0.041
+  waveEnabled: 0
   waveForce: 75
   waveWidth: 0.75
   waveSpeed: 2
@@ -186,7 +186,7 @@ MonoBehaviour:
   mergeSpawnOvershoot: 1
   spawnDistance: 5
   spawnInterval: 0.15
-  squashAllInterval: 0.2
+  squashAllInterval: 0.25
   squashAllGracePeriod: 2.5
   cubeSprite: {fileID: 0}
   cubeCollapseDuration: 0.6
@@ -270,6 +270,8 @@ MonoBehaviour:
   guessingDurationSeconds: 30
   allSubmittedAdvanceDelay: 1.5
   revealDurationSeconds: 6
+  leaderboardDurationSeconds: 8
+  leaderboardAfterLastDrawing: 0
   menuSceneName: Menu
   colorCount: 4
   saturation: 1
